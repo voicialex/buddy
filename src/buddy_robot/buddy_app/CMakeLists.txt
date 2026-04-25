@@ -1,0 +1,17 @@
+cmake_minimum_required(VERSION 3.8)
+project(buddy_app)
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
+find_package(class_loader REQUIRED)
+
+add_executable(buddy_app src/buddy_main.cpp)
+target_compile_features(buddy_app PUBLIC cxx_std_17)
+ament_target_dependencies(buddy_app ament_index_cpp rclcpp rclcpp_components class_loader)
+
+install(TARGETS buddy_app DESTINATION lib/${PROJECT_NAME})
+ament_package()

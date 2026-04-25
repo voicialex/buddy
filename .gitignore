@@ -1,0 +1,17 @@
+models/
+logs/
+build/
+install/
+log/
+build.log
+*.rknn
+*.onnx
+*.pyc
+__pycache__/
+# third_party: only keep downloaded underlay assets
+third_party/ros2/humble/install/
+third_party/ros2/jazzy/install/
+# workspace build artifacts
+src/buddy_robot/build/
+src/buddy_robot/install/
+src/buddy_robot/log/

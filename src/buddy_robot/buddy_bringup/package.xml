@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>buddy_bringup</name>
+  <version>0.1.0</version>
+  <description>Launch files and parameter configuration for Buddy Robot</description>
+  <maintainer email="dev@buddy.robot">seb</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>buddy_audio</exec_depend>
+  <exec_depend>buddy_vision</exec_depend>
+  <exec_depend>buddy_cloud</exec_depend>
+  <exec_depend>buddy_state_machine</exec_depend>
+  <exec_depend>buddy_dialog</exec_depend>
+  <exec_depend>buddy_sentence</exec_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

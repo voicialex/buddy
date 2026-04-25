@@ -1,0 +1,26 @@
+audio:
+  ros__parameters:
+    wake_word_model_path: "/opt/models/wake_word.bin"
+    asr_model_path: "/opt/models/sherpa_onnx/"
+    sample_rate: 16000
+    tts_engine: "edge-tts"
+    volume: 0.8
+
+vision:
+  ros__parameters:
+    model_path: "/opt/models/expression.rknn"
+    camera_device: "/dev/video0"
+    frame_width: 640
+    frame_height: 480
+    inference_interval_ms: 500
+
+cloud:
+  ros__parameters:
+    gateway_url: "wss://gateway.example.com/v1/companion/session"
+    reconnect_base_ms: 200
+    reconnect_max_ms: 800
+
+dialog:
+  ros__parameters:
+    max_context_turns: 10
+    persona: "buddy"
