@@ -1,0 +1,5 @@
+cloud:
+  ros__parameters:
+    gateway_url: "wss://gateway.example.com/v1/companion/session"
+    reconnect_base_ms: 200
+    reconnect_max_ms: 800

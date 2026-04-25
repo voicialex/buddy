@@ -1,0 +1,4 @@
+state_machine:
+  ros__parameters:
+    idle_timeout_s: 30.0
+    wake_word_enabled: true

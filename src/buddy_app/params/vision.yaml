@@ -1,0 +1,19 @@
+vision:
+  ros__parameters:
+    cameras:
+      expression:
+        device_path: "/dev/video0"
+        frame_width: 640
+        frame_height: 480
+        model_path: "models/expression/model.rknn"
+        model_input_width: 224
+        model_input_height: 224
+        inference_interval_ms: 500
+      game:
+        device_path: "/dev/video2"
+        frame_width: 640
+        frame_height: 480
+        model_path: "models/game/model.rknn"
+        model_input_width: 224
+        model_input_height: 224
+        inference_interval_ms: 500

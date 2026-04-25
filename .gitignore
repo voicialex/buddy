@@ -1,0 +1,13 @@
+models/
+!src/buddy_vision/models/
+logs/
+output/
+build/
+install/
+log/
+__pycache__/
+# prebuilt: extracted ros2 tarball (only keep README.md)
+prebuilt/*
+!prebuilt/README.md
+*.rknn
+*.onnx

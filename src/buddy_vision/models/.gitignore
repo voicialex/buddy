@@ -1,0 +1,4 @@
+# Model binaries — too large for git
+*.rknn
+*.onnx
+*.pt

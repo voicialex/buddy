@@ -1,0 +1,4 @@
+dialog:
+  ros__parameters:
+    max_context_turns: 10
+    persona: "buddy"

@@ -1,0 +1,7 @@
+audio:
+  ros__parameters:
+    wake_word_model_path: "/opt/models/wake_word.bin"
+    asr_model_path: "/opt/models/sherpa_onnx/"
+    sample_rate: 16000
+    tts_engine: "edge-tts"
+    volume: 0.8
