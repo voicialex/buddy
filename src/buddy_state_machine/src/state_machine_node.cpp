@@ -18,10 +18,10 @@ CallbackReturn StateMachineNode::on_configure(const rclcpp_lifecycle::State &) {
   asr_text_sub_ = create_subscription<std_msgs::msg::String>(
       "/audio/asr_text", 10,
       std::bind(&StateMachineNode::on_asr_text, this, std::placeholders::_1));
-  expression_sub_ =
-      create_subscription<buddy_interfaces::msg::ExpressionResult>(
-          "/vision/expression/result", 10,
-          std::bind(&StateMachineNode::on_expression, this,
+  emotion_sub_ =
+      create_subscription<buddy_interfaces::msg::EmotionResult>(
+          "/vision/emotion/result", 10,
+          std::bind(&StateMachineNode::on_emotion, this,
                     std::placeholders::_1));
   cloud_response_sub_ = create_subscription<buddy_interfaces::msg::CloudChunk>(
       "/dialog/cloud_response", 10,
@@ -48,7 +48,7 @@ CallbackReturn StateMachineNode::on_cleanup(const rclcpp_lifecycle::State &) {
   capture_client_.reset();
   wake_word_sub_.reset();
   asr_text_sub_.reset();
-  expression_sub_.reset();
+  emotion_sub_.reset();
   cloud_response_sub_.reset();
   tts_done_sub_.reset();
   return CallbackReturn::SUCCESS;
@@ -85,9 +85,9 @@ void StateMachineNode::on_asr_text(const std_msgs::msg::String &msg) {
   transition(State::THINKING);
 }
 
-void StateMachineNode::on_expression(
-    const buddy_interfaces::msg::ExpressionResult &msg) {
-  RCLCPP_INFO(get_logger(), "Expression: %s (%.2f)", msg.expression.c_str(),
+void StateMachineNode::on_emotion(
+    const buddy_interfaces::msg::EmotionResult &msg) {
+  RCLCPP_INFO(get_logger(), "Emotion: %s (%.2f)", msg.emotion.c_str(),
               msg.confidence);
 }
 

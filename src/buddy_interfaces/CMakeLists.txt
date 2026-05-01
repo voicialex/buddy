@@ -12,7 +12,7 @@ rosidl_generate_interfaces(
   "msg/UserInput.msg"
   "msg/CloudChunk.msg"
   "msg/Sentence.msg"
-  "msg/ExpressionResult.msg"
+  "msg/EmotionResult.msg"
   "msg/DisplayCommand.msg"
   "srv/CaptureImage.srv"
   DEPENDENCIES

@@ -4,10 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run
 
-Prerequisite: `prebuilt/setup.bash` must exist. Extract the ros2_core tarball:
+Prerequisite: extract pre-built dependencies into `prebuilt/`:
 
 ```bash
-tar xzf ros2-humble-x86_64.tar.gz -C prebuilt/
+# ROS 2 core
+mkdir -p prebuilt/ros2_core
+tar xzf prebuilt/ros2-humble-x86_64.tar.gz -C prebuilt/ros2_core/
+
+# ONNX Runtime
+tar xzf prebuilt/onnxruntime-linux-x64-1.21.0.tgz -C prebuilt/
+mv prebuilt/onnxruntime-linux-x64-1.21.0 prebuilt/onnxruntime
 ```
 
 ```bash

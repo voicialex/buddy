@@ -6,6 +6,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <opencv2/opencv.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <string>
@@ -27,9 +28,13 @@ public:
   using ResultCallback =
       std::function<void(const std::string &label, float confidence)>;
 
-  CameraWorker(const CameraConfig &config, rclcpp::Logger logger)
+  CameraWorker(const CameraConfig &config, rclcpp::Logger logger,
+               std::unique_ptr<ModelInterface> model, bool preview = false)
       : config_(config), logger_(logger),
-        model_(std::make_unique<MockModel>()), running_(false) {}
+        model_(std::move(model)), running_(false),
+        preview_enabled_(preview) {}
+
+  ~CameraWorker() { stop(); }
 
   bool start() {
     cap_.open(config_.device_path, cv::CAP_V4L2);
@@ -50,6 +55,7 @@ public:
     }
 
     running_ = true;
+    last_fps_time_ = std::chrono::steady_clock::now();
     capture_thread_ = std::thread(&CameraWorker::capture_loop, this);
     inference_thread_ = std::thread(&CameraWorker::inference_loop, this);
     RCLCPP_INFO(logger_, "CameraWorker [%s]: started", config_.name.c_str());
@@ -78,6 +84,11 @@ public:
 private:
   void capture_loop() {
     cv::Mat frame;
+    std::string win_name = "Camera: " + config_.name;
+    bool win_created = false;
+    int fps_frame_count = 0;
+    double current_fps = 0.0;
+
     while (running_) {
       if (!cap_.isOpened()) {
         try_reconnect();
@@ -90,7 +101,60 @@ private:
         try_reconnect();
         continue;
       }
+
+      // FPS calculation
+      fps_frame_count++;
+      auto now = std::chrono::steady_clock::now();
+      auto fps_elapsed =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              now - last_fps_time_)
+              .count();
+      if (fps_elapsed >= 1000) {
+        current_fps = fps_frame_count * 1000.0 / fps_elapsed;
+        fps_frame_count = 0;
+        last_fps_time_ = now;
+      }
+
+      if (preview_enabled_) {
+        if (!win_created) {
+          cv::namedWindow(win_name, cv::WINDOW_AUTOSIZE);
+          win_created = true;
+        }
+        // Draw overlay from inference results
+        cv::Mat display = frame.clone();
+        {
+          std::lock_guard<std::mutex> lock(overlay_mtx_);
+          if (!overlay_face_rect_.empty()) {
+            cv::rectangle(display, overlay_face_rect_,
+                          cv::Scalar(0, 255, 0), 2);
+            std::string text = overlay_emotion_ + " " +
+                               std::to_string(
+                                   static_cast<int>(overlay_confidence_ * 100)) +
+                               "%";
+            int baseline = 0;
+            auto text_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX,
+                                              0.7, 2, &baseline);
+            int text_y = overlay_face_rect_.y - 8;
+            if (text_y < text_size.height) {
+              text_y = overlay_face_rect_.y + text_size.height + 8;
+            }
+            cv::putText(display, text,
+                        cv::Point(overlay_face_rect_.x, text_y),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.7,
+                        cv::Scalar(0, 255, 0), 2);
+          }
+        }
+        // FPS top-left
+        std::string fps_text = "FPS: " + std::to_string(static_cast<int>(current_fps));
+        cv::putText(display, fps_text, cv::Point(10, 25),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 255), 2);
+        cv::imshow(win_name, display);
+        cv::waitKey(1);
+      }
       buffer_.write(std::move(frame));
+    }
+    if (win_created) {
+      cv::destroyWindow(win_name);
     }
   }
 
@@ -105,13 +169,16 @@ private:
       if (!buffer_.snapshot(frame)) {
         continue;
       }
-      cv::Mat processed;
-      cv::resize(frame, processed,
-                 cv::Size(config_.model_input_width, config_.model_input_height));
-      cv::cvtColor(processed, processed, cv::COLOR_BGR2RGB);
-      processed.convertTo(processed, CV_32F, 1.0 / 255.0);
+      auto result = model_->inference(frame);
 
-      auto result = model_->inference(processed);
+      // Update overlay for preview drawing
+      {
+        std::lock_guard<std::mutex> lock(overlay_mtx_);
+        overlay_emotion_ = result.label;
+        overlay_confidence_ = result.confidence;
+        overlay_face_rect_ = result.face_rect;
+      }
+
       if (result_cb_) {
         result_cb_(result.label, result.confidence);
       }
@@ -153,4 +220,14 @@ private:
   std::thread inference_thread_;
   cv::VideoCapture cap_;
   ResultCallback result_cb_;
+  bool preview_enabled_;
+
+  // Overlay state (shared between capture & inference threads)
+  std::mutex overlay_mtx_;
+  std::string overlay_emotion_;
+  float overlay_confidence_{0.f};
+  cv::Rect overlay_face_rect_;
+
+  // FPS tracking
+  std::chrono::steady_clock::time_point last_fps_time_;
 };

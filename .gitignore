@@ -6,7 +6,6 @@ build/
 install/
 log/
 __pycache__/
-# prebuilt: extracted ros2 tarball (only keep README.md)
 prebuilt/*
 !prebuilt/README.md
 *.rknn

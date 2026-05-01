@@ -1,19 +1,22 @@
 vision:
   ros__parameters:
+    preview: true   # Open OpenCV window for camera preview
     cameras:
-      expression:
+      emotion:
+        # HUE HD Pro USB camera (/dev/video0)
+        # Run: v4l2-ctl --list-devices to confirm /dev/videoN
         device_path: "/dev/video0"
         frame_width: 640
         frame_height: 480
-        model_path: "models/expression/model.rknn"
+        model_path: "models/emotion"
         model_input_width: 224
         model_input_height: 224
         inference_interval_ms: 500
       game:
-        device_path: "/dev/video2"
+        device_path: "/dev/video_game"  # placeholder until real game camera connected
         frame_width: 640
         frame_height: 480
-        model_path: "models/game/model.rknn"
+        model_path: "models/game/model.onnx"
         model_input_width: 224
         model_input_height: 224
         inference_interval_ms: 500

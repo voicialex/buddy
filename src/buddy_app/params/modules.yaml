@@ -1,0 +1,10 @@
+# Toggle modules on/off for development.
+# Set to false to skip loading a module at startup.
+# Missing entries default to true (enabled).
+modules:
+  audio: false
+  vision: true
+  cloud: false
+  state_machine: false
+  dialog: false
+  sentence: false

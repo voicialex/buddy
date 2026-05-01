@@ -2,7 +2,7 @@
 
 #include "buddy_vision/camera_worker.hpp"
 
-#include <buddy_interfaces/msg/expression_result.hpp>
+#include <buddy_interfaces/msg/emotion_result.hpp>
 #include <buddy_interfaces/srv/capture_image.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
@@ -36,8 +36,9 @@ private:
       std::shared_ptr<buddy_interfaces::srv::CaptureImage::Response> response);
 
   std::map<std::string, std::unique_ptr<CameraWorker>> workers_;
+  std::map<std::string, CameraConfig> pending_configs_;
   std::map<std::string,
-           rclcpp::Publisher<buddy_interfaces::msg::ExpressionResult>::SharedPtr>
+           rclcpp::Publisher<buddy_interfaces::msg::EmotionResult>::SharedPtr>
       result_pubs_;
   std::map<std::string,
            rclcpp::Service<buddy_interfaces::srv::CaptureImage>::SharedPtr>

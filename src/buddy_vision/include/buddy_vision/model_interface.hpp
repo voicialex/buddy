@@ -6,6 +6,7 @@
 struct ModelResult {
   std::string label;
   float confidence;
+  cv::Rect face_rect;
 };
 
 class ModelInterface {
