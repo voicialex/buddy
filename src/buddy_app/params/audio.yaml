@@ -1,7 +1,18 @@
 audio:
   ros__parameters:
-    wake_word_model_path: "/opt/models/wake_word.bin"
-    asr_model_path: "/opt/models/sherpa_onnx/"
+    device: "default"
     sample_rate: 16000
-    tts_engine: "edge-tts"
-    volume: 0.8
+    kws:
+      encoder: "prebuilt/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
+      decoder: "prebuilt/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/decoder-epoch-12-avg-2-chunk-16-left-64.onnx"
+      joiner: "prebuilt/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
+      tokens: "prebuilt/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/tokens.txt"
+      keywords_file: "prebuilt/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/test_wavs/test_keywords.txt"
+      threshold: 0.1
+      score: 3.0
+    asr:
+      encoder: "prebuilt/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/encoder-epoch-99-avg-1.int8.onnx"
+      decoder: "prebuilt/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/decoder-epoch-99-avg-1.onnx"
+      joiner: "prebuilt/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/joiner-epoch-99-avg-1.int8.onnx"
+      tokens: "prebuilt/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/tokens.txt"
+      decoding_method: "greedy_search"

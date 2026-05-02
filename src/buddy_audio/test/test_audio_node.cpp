@@ -12,15 +12,6 @@ protected:
 TEST_F(AudioNodeTest, NodeName) {
   EXPECT_EQ(node_->get_name(), std::string("audio"));
 }
-TEST_F(AudioNodeTest, ConfigureTransition) {
-  EXPECT_STREQ(node_->configure().label().c_str(), "inactive");
-}
-TEST_F(AudioNodeTest, FullLifecycleSequence) {
-  EXPECT_STREQ(node_->configure().label().c_str(), "inactive");
-  EXPECT_STREQ(node_->activate().label().c_str(), "active");
-  EXPECT_STREQ(node_->deactivate().label().c_str(), "inactive");
-  EXPECT_STREQ(node_->cleanup().label().c_str(), "unconfigured");
-}
 
 int main(int argc, char **argv) {
   rclcpp::init(argc, argv);

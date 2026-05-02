@@ -1,4 +1,11 @@
 #pragma once
+#include <atomic>
+#include <string>
+#include <thread>
+
+#include <alsa/asoundlib.h>
+#include <sherpa-onnx/c-api/c-api.h>
+
 #include <buddy_interfaces/msg/sentence.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
@@ -20,10 +27,33 @@ public:
   CallbackReturn on_error(const rclcpp_lifecycle::State &) override;
 
 private:
+  enum class Mode { KWS, ASR };
+
+  void capture_loop();
   void on_sentence(const buddy_interfaces::msg::Sentence &msg);
+
+  // Sherpa-ONNX handles
+  const SherpaOnnxKeywordSpotter *kws_ = nullptr;
+  const SherpaOnnxOnlineStream *kws_stream_ = nullptr;
+  const SherpaOnnxOnlineRecognizer *asr_ = nullptr;
+  const SherpaOnnxOnlineStream *asr_stream_ = nullptr;
+
+  // ALSA
+  snd_pcm_t *pcm_ = nullptr;
+
+  // Threading
+  std::thread capture_thread_;
+  std::atomic<bool> running_{false};
+  std::atomic<Mode> mode_{Mode::KWS};
+
+  // ROS interfaces
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr wake_word_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr asr_text_pub_;
   rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr tts_done_pub_;
   rclcpp::Subscription<buddy_interfaces::msg::Sentence>::SharedPtr
       sentence_sub_;
+
+  // Config
+  int sample_rate_ = 16000;
+  std::string device_ = "default";
 };
