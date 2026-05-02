@@ -1,8 +1,8 @@
 #pragma once
 
-#include <buddy_interfaces/msg/cloud_chunk.hpp>
-#include <buddy_interfaces/msg/cloud_request.hpp>
 #include <buddy_interfaces/msg/emotion_result.hpp>
+#include <buddy_interfaces/msg/inference_chunk.hpp>
+#include <buddy_interfaces/msg/inference_request.hpp>
 #include <buddy_interfaces/msg/sentence.hpp>
 #include <buddy_interfaces/srv/capture_image.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -39,12 +39,13 @@ private:
   void on_wake_word(const std_msgs::msg::String &msg);
   void on_asr_text(const std_msgs::msg::String &msg);
   void on_emotion(const buddy_interfaces::msg::EmotionResult &msg);
-  void on_cloud_chunk(const buddy_interfaces::msg::CloudChunk &msg);
+  void on_local_chunk(const buddy_interfaces::msg::InferenceChunk &msg);
+  void on_cloud_chunk(const buddy_interfaces::msg::InferenceChunk &msg);
   void on_tts_done(const std_msgs::msg::Empty &msg);
 
   void transition(State new_state);
-  void request_cloud(const std::string &trigger_type,
-                     const std::string &user_text);
+  void request_inference(const std::string &trigger_type,
+                         const std::string &user_text);
   void flush_sentence_buffer(const std::string &session_id);
   void trim_history();
 
@@ -70,16 +71,19 @@ private:
 
   std::string sentence_buffer_;
   uint32_t sentence_index_{0};
+  bool first_cloud_chunk_{true};
 
-  rclcpp::Publisher<buddy_interfaces::msg::CloudRequest>::SharedPtr
-      cloud_request_pub_;
+  rclcpp::Publisher<buddy_interfaces::msg::InferenceRequest>::SharedPtr
+      inference_request_pub_;
   rclcpp::Publisher<buddy_interfaces::msg::Sentence>::SharedPtr sentence_pub_;
 
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr wake_word_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr asr_text_sub_;
   rclcpp::Subscription<buddy_interfaces::msg::EmotionResult>::SharedPtr
       emotion_sub_;
-  rclcpp::Subscription<buddy_interfaces::msg::CloudChunk>::SharedPtr
+  rclcpp::Subscription<buddy_interfaces::msg::InferenceChunk>::SharedPtr
+      local_chunk_sub_;
+  rclcpp::Subscription<buddy_interfaces::msg::InferenceChunk>::SharedPtr
       cloud_chunk_sub_;
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr tts_done_sub_;
 

@@ -1,7 +1,7 @@
 # Buddy 多模态管线升级 — 进度追溯
 
-版本: v1.0
-日期: 2026-05-02
+版本: v1.1
+日期: 2026-05-03
 分支: `feature/ros2`
 
 ---
@@ -134,6 +134,94 @@ buddy_brain (状态机 + 对话上下文 + 切句 + 情绪仲裁)
     ↓ /brain/cloud_request        ↑ /cloud/response
 buddy_cloud (豆包 API, libcurl)
     ↓ CloudChunk 流式返回
+### 阶段 4：双脑架构（本地 + 云端推理）
+
+| 项目 | 状态 | 提交 | 说明 |
+|------|------|------|------|
+| 消息重命名 Cloud→Inference | ✅ | — | CloudRequest→InferenceRequest, CloudChunk→InferenceChunk |
+| buddy_cloud 适配新消息 | ✅ | — | topic/消息类型重命名 |
+| buddy_local_llm 新建 | ✅ | — | ollama 流式推理组件 |
+| buddy_brain 双流合并 | ✅ | — | 本地先播、云端替换逻辑 |
+| buddy_app 加载 local_llm | ✅ | — | 组件列表+配置 |
+| 文档同步 | ✅ | — | architecture, protocol, plan |
+
+**变更文件：**
+- `src/buddy_interfaces/msg/` — InferenceRequest.msg, InferenceChunk.msg (重命名)
+- `src/buddy_local_llm/` — 整个包（新建）
+- `src/buddy_cloud/` — 消息类型和 topic 名更新
+- `src/buddy_brain/` — 双流订阅+替换逻辑
+- `src/buddy_app/src/buddy_main.cpp` — 组件列表
+- `src/buddy_app/params/local_llm.yaml` — 本地 LLM 配置
+- `docs/` — 架构、协议、计划文档
+
+### 测试覆盖
+
+| 测试 | 数量 | 状态 |
+|------|------|------|
+| `test_audio_node` (NodeName) | 1 | ✅ |
+| `test_brain_node` (lifecycle ×4) | 4 | ✅ |
+| `test_segment` (切句 ×4) | 4 | ✅ |
+| `test_cloud_node` (lifecycle ×3) | 3 | ✅ |
+| `test_local_llm_node` (lifecycle ×3) | 3 | ✅ |
+| **合计** | **15** | **全部通过** |
+
+---
+
+## TODO
+
+### 高优先级
+
+- [ ] **配置 `DOUBAO_API_KEY`** — 设置环境变量启用云端 API 调用
+- [ ] **自定义唤醒词** — 当前使用示例 keywords 文件，需替换为 `你好小伙伴` 等自定义词
+  - 修改 `audio.yaml` 的 `kws.keywords_file`，或创建自定义 keywords.txt
+  - 格式：`n ǐ h ǎo x iǎo h uǒ b àn @你好小伙伴`（拼音 + 标注）
+- [ ] **麦克风实测** — 连接物理麦克风验证 KWS → ASR → cloud 全链路
+- [ ] **TTS 真实实现** — 当前 `on_sentence` 只打日志，需接入 edge-tts 或其他 TTS 引擎
+
+### 中优先级
+
+- [ ] **情绪主动触发端到端验证** — brain 的 emotion trigger 逻辑已实现，需验证 vision → brain → cloud 链路
+- [ ] **buddy_main 参数加载** — 确认 `audio.yaml` 被 buddy_main 正确加载（可能需在启动中添加 `--params-file`）
+- [ ] **ASR 静音超时** — 唤醒后长时间无语音应自动回退 KWS（当前依赖 endpoint rule3 的 20s）
+- [ ] **错误恢复** — ALSA 设备断开、模型加载失败等异常场景的自动恢复
+
+### 低优先级
+
+- [ ] **第二摄像头支持** — 设计文档已明确本轮不做
+- [ ] **ARM 交叉编译** — 下载 aarch64 版 Sherpa-ONNX 预编译库
+- [ ] **云端 Provider 切换** — 支持 Gemini 备选（cloud.yaml 已预留 provider 字段）
+- [ ] **性能调优** — Sherpa-ONNX num_threads、ALSA buffer 大小、ASR endpoint 灵敏度
+- [ ] **集成测试** — 跨包 launch test，验证完整管线
+
+---
+
+## 提交历史
+
+```
+e488be7 Simply code
+07a344a feat(module): [PRO-10000] Update plan with progress tracking and TODO list
+4cff181 feat(module): [PRO-10000] Add Sherpa-ONNX KWS and streaming ASR to audio pipeline
+05a1722 feat(module): [PRO-10000] Update docs for 4-package architecture
+5b6d3f3 feat(module): [PRO-10000] Format all files after architecture simplification
+30442f4 Integrate Doubao multimodal API in buddy_cloud
+5d284ab Update cloud config for Doubao multimodal API
+4b4796b Replace dialog/sentence/state_machine with buddy_brain
+a143e22 Add brain node lifecycle and segmentation tests
+e0b3c93 Add buddy_brain package with state machine, dialog context, segmentation
+e97d1d5 Add CloudRequest message for brain-to-cloud multimodal
+3506d45 Revise spec v2: simplify to 4-package architecture
+a1f3c54 Add multimodal pipeline upgrade design spec
+```
+
+## 当前架构
+
+```
+buddy_audio (ALSA + Sherpa-ONNX KWS/ASR + TTS stub)
+    ↓ /audio/wake_word, /audio/asr_text
+buddy_brain (状态机 + 对话上下文 + 切句 + 情绪仲裁 + 双流合并)
+    ↓ /brain/request                  ↑ /inference/local_chunk (快速回复)
+    ├─→ buddy_local_llm (ollama)      ↑ /inference/cloud_chunk (精细回复)
+    └─→ buddy_cloud (Doubao API)
 buddy_brain → /brain/sentence → buddy_audio (TTS)
 buddy_vision (Haar + ONNX 情绪识别) → /vision/emotion
 ```

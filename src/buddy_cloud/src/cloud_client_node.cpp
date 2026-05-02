@@ -81,12 +81,13 @@ CallbackReturn CloudClientNode::on_configure(const rclcpp_lifecycle::State &) {
     api_key_ = env_key;
   }
 
-  cloud_response_pub_ = create_publisher<buddy_interfaces::msg::CloudChunk>(
-      "/cloud/response", 10);
-  cloud_request_sub_ = create_subscription<buddy_interfaces::msg::CloudRequest>(
-      "/brain/cloud_request", 10,
-      std::bind(&CloudClientNode::on_cloud_request, this,
-                std::placeholders::_1));
+  cloud_chunk_pub_ = create_publisher<buddy_interfaces::msg::InferenceChunk>(
+      "/inference/cloud_chunk", 10);
+  inference_request_sub_ =
+      create_subscription<buddy_interfaces::msg::InferenceRequest>(
+          "/brain/request", 10,
+          std::bind(&CloudClientNode::on_inference_request, this,
+                    std::placeholders::_1));
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
   return CallbackReturn::SUCCESS;
@@ -108,8 +109,8 @@ CallbackReturn CloudClientNode::on_cleanup(const rclcpp_lifecycle::State &) {
   if (worker_thread_.joinable()) {
     worker_thread_.join();
   }
-  cloud_response_pub_.reset();
-  cloud_request_sub_.reset();
+  cloud_chunk_pub_.reset();
+  inference_request_sub_.reset();
   curl_global_cleanup();
   return CallbackReturn::SUCCESS;
 }
@@ -122,10 +123,10 @@ CallbackReturn CloudClientNode::on_error(const rclcpp_lifecycle::State &) {
   return CallbackReturn::SUCCESS;
 }
 
-void CloudClientNode::on_cloud_request(
-    const buddy_interfaces::msg::CloudRequest &msg) {
-  RCLCPP_INFO(get_logger(), "Cloud request [%s]: %s", msg.trigger_type.c_str(),
-              msg.user_text.c_str());
+void CloudClientNode::on_inference_request(
+    const buddy_interfaces::msg::InferenceRequest &msg) {
+  RCLCPP_INFO(get_logger(), "Inference request [%s]: %s",
+              msg.trigger_type.c_str(), msg.user_text.c_str());
   std::lock_guard<std::mutex> lock(request_mtx_);
   if (worker_thread_.joinable()) {
     RCLCPP_WARN(get_logger(), "Previous request still in progress, waiting");
@@ -169,14 +170,14 @@ CloudClientNode::encode_image_base64(const sensor_msgs::msg::Image &image,
 }
 
 void CloudClientNode::call_doubao(
-    const buddy_interfaces::msg::CloudRequest &msg) {
+    const buddy_interfaces::msg::InferenceRequest &msg) {
   if (api_key_.empty()) {
     RCLCPP_ERROR(get_logger(), "No API key configured for Doubao");
-    auto chunk = buddy_interfaces::msg::CloudChunk();
+    auto chunk = buddy_interfaces::msg::InferenceChunk();
     chunk.session_id = "error";
     chunk.chunk_text = "API key not configured.";
     chunk.is_final = true;
-    cloud_response_pub_->publish(chunk);
+    cloud_chunk_pub_->publish(chunk);
     return;
   }
 
@@ -251,14 +252,14 @@ void CloudClientNode::call_doubao(
   curl_slist_free_all(headers);
   curl_easy_cleanup(curl);
 
-  auto chunk = buddy_interfaces::msg::CloudChunk();
+  auto chunk = buddy_interfaces::msg::InferenceChunk();
   chunk.session_id = "doubao";
 
   if (res != CURLE_OK) {
     RCLCPP_ERROR(get_logger(), "Doubao API error: %s", curl_easy_strerror(res));
     chunk.chunk_text = "Cloud request failed.";
     chunk.is_final = true;
-    cloud_response_pub_->publish(chunk);
+    cloud_chunk_pub_->publish(chunk);
     return;
   }
 
@@ -275,7 +276,7 @@ void CloudClientNode::call_doubao(
   }
 
   chunk.is_final = true;
-  cloud_response_pub_->publish(chunk);
+  cloud_chunk_pub_->publish(chunk);
   RCLCPP_INFO(get_logger(), "Doubao response: %s", chunk.chunk_text.c_str());
 }
 

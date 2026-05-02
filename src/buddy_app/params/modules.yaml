@@ -8,3 +8,4 @@ modules:
   vision: true
   brain: false
   cloud: false
+  local_llm: false

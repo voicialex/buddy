@@ -1,4 +1,4 @@
-# CloudRequest.msg — brain → cloud
+# InferenceRequest.msg — brain → inference backends
 string trigger_type           # "voice" or "emotion"
 string user_text              # ASR text (voice trigger)
 string emotion                # current emotion label

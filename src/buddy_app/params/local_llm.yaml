@@ -1,0 +1,6 @@
+local_llm:
+  ros__parameters:
+    model_name: "gemma4:e2b"
+    api_url: "http://localhost:11434"
+    timeout_seconds: 5
+    system_prompt: "你是一个友好的机器人助手，请用简短自然的方式回复"

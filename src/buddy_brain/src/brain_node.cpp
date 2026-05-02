@@ -47,8 +47,9 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State &) {
     }
   }
 
-  cloud_request_pub_ = create_publisher<buddy_interfaces::msg::CloudRequest>(
-      "/brain/cloud_request", 10);
+  inference_request_pub_ =
+      create_publisher<buddy_interfaces::msg::InferenceRequest>(
+          "/brain/request", 10);
   sentence_pub_ =
       create_publisher<buddy_interfaces::msg::Sentence>("/brain/sentence", 10);
 
@@ -61,8 +62,11 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State &) {
   emotion_sub_ = create_subscription<buddy_interfaces::msg::EmotionResult>(
       "/vision/emotion/result", 10,
       std::bind(&BrainNode::on_emotion, this, std::placeholders::_1));
-  cloud_chunk_sub_ = create_subscription<buddy_interfaces::msg::CloudChunk>(
-      "/cloud/response", 10,
+  local_chunk_sub_ = create_subscription<buddy_interfaces::msg::InferenceChunk>(
+      "/inference/local_chunk", 10,
+      std::bind(&BrainNode::on_local_chunk, this, std::placeholders::_1));
+  cloud_chunk_sub_ = create_subscription<buddy_interfaces::msg::InferenceChunk>(
+      "/inference/cloud_chunk", 10,
       std::bind(&BrainNode::on_cloud_chunk, this, std::placeholders::_1));
   tts_done_sub_ = create_subscription<std_msgs::msg::Empty>(
       "/audio/tts_done", 10,
@@ -86,11 +90,12 @@ CallbackReturn BrainNode::on_deactivate(const rclcpp_lifecycle::State &) {
 
 CallbackReturn BrainNode::on_cleanup(const rclcpp_lifecycle::State &) {
   RCLCPP_INFO(get_logger(), "BrainNode: cleaning up");
-  cloud_request_pub_.reset();
+  inference_request_pub_.reset();
   sentence_pub_.reset();
   wake_word_sub_.reset();
   asr_text_sub_.reset();
   emotion_sub_.reset();
+  local_chunk_sub_.reset();
   cloud_chunk_sub_.reset();
   tts_done_sub_.reset();
   capture_client_.reset();
@@ -121,7 +126,7 @@ void BrainNode::on_asr_text(const std_msgs::msg::String &msg) {
   if (state_ != State::LISTENING)
     return;
   RCLCPP_INFO(get_logger(), "ASR: %s", msg.data.c_str());
-  request_cloud(trigger_types::kVoice, msg.data);
+  request_inference(trigger_types::kVoice, msg.data);
 }
 
 void BrainNode::on_emotion(const buddy_interfaces::msg::EmotionResult &msg) {
@@ -153,28 +158,56 @@ void BrainNode::on_emotion(const buddy_interfaces::msg::EmotionResult &msg) {
       last_proactive_trigger_ = now;
       tracking_negative_ = false;
       transition(State::EMOTION_TRIGGER);
-      request_cloud(trigger_types::kEmotion, "");
+      request_inference(trigger_types::kEmotion, "");
     }
   } else {
     tracking_negative_ = false;
   }
 }
 
-void BrainNode::on_cloud_chunk(const buddy_interfaces::msg::CloudChunk &msg) {
-  if (state_ != State::REQUESTING && state_ != State::SPEAKING)
+void BrainNode::on_local_chunk(
+    const buddy_interfaces::msg::InferenceChunk &msg) {
+  if (state_ != State::REQUESTING)
     return;
 
-  if (state_ == State::REQUESTING) {
-    transition(State::SPEAKING);
+  if (!msg.chunk_text.empty()) {
+    auto sentences = segment(msg.chunk_text);
+    for (auto &s : sentences) {
+      auto sentence_msg = buddy_interfaces::msg::Sentence();
+      sentence_msg.session_id = session_id_;
+      sentence_msg.text = s;
+      sentence_msg.index = sentence_index_++;
+      sentence_pub_->publish(sentence_msg);
+    }
   }
 
-  auto sentences = segment(msg.chunk_text);
-  for (auto &s : sentences) {
-    auto sentence_msg = buddy_interfaces::msg::Sentence();
-    sentence_msg.session_id = session_id_;
-    sentence_msg.text = s;
-    sentence_msg.index = sentence_index_++;
-    sentence_pub_->publish(sentence_msg);
+  if (msg.is_final) {
+    flush_sentence_buffer(session_id_);
+  }
+}
+
+void BrainNode::on_cloud_chunk(
+    const buddy_interfaces::msg::InferenceChunk &msg) {
+  if (state_ != State::REQUESTING)
+    return;
+
+  if (first_cloud_chunk_) {
+    first_cloud_chunk_ = false;
+    // TODO: interrupt local TTS playback (requires audio support)
+    sentence_buffer_.clear();
+    sentence_index_ = 0;
+    RCLCPP_INFO(get_logger(), "Cloud response arrived, replacing local");
+  }
+
+  if (!msg.chunk_text.empty()) {
+    auto sentences = segment(msg.chunk_text);
+    for (auto &s : sentences) {
+      auto sentence_msg = buddy_interfaces::msg::Sentence();
+      sentence_msg.session_id = session_id_;
+      sentence_msg.text = s;
+      sentence_msg.index = sentence_index_++;
+      sentence_pub_->publish(sentence_msg);
+    }
   }
 
   if (msg.is_final) {
@@ -183,6 +216,7 @@ void BrainNode::on_cloud_chunk(const buddy_interfaces::msg::CloudChunk &msg) {
       history_.push_back("assistant: " + msg.chunk_text);
       trim_history();
     }
+    transition(State::SPEAKING);
   }
 }
 
@@ -201,16 +235,17 @@ void BrainNode::transition(State new_state) {
   state_ = new_state;
 }
 
-void BrainNode::request_cloud(const std::string &trigger_type,
-                              const std::string &user_text) {
+void BrainNode::request_inference(const std::string &trigger_type,
+                                  const std::string &user_text) {
   auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::system_clock::now().time_since_epoch())
                     .count();
   session_id_ = "sess-" + std::to_string(now_ms);
   sentence_buffer_.clear();
   sentence_index_ = 0;
+  first_cloud_chunk_ = true;
 
-  auto req = buddy_interfaces::msg::CloudRequest();
+  auto req = buddy_interfaces::msg::InferenceRequest();
   req.trigger_type = trigger_type;
   req.user_text = user_text;
   req.emotion = current_emotion_;
@@ -236,7 +271,7 @@ void BrainNode::request_cloud(const std::string &trigger_type,
     }
   }
 
-  cloud_request_pub_->publish(req);
+  inference_request_pub_->publish(req);
   transition(State::REQUESTING);
 }
 

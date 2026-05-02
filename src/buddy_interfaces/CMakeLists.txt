@@ -9,10 +9,10 @@ find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
-  "msg/CloudChunk.msg"
+  "msg/InferenceChunk.msg"
   "msg/Sentence.msg"
   "msg/EmotionResult.msg"
-  "msg/CloudRequest.msg"
+  "msg/InferenceRequest.msg"
   "srv/CaptureImage.srv"
   DEPENDENCIES
   builtin_interfaces

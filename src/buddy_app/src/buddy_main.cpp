@@ -25,10 +25,12 @@ static const std::vector<ComponentEntry> kComponents = {
      "rclcpp_components::NodeFactoryTemplate<AudioPipelineNode>", "audio"},
     {"libvision_component.so",
      "rclcpp_components::NodeFactoryTemplate<VisionPipelineNode>", "vision"},
-    {"libbrain_component.so",
-     "rclcpp_components::NodeFactoryTemplate<BrainNode>", "brain"},
     {"libcloud_component.so",
      "rclcpp_components::NodeFactoryTemplate<CloudClientNode>", "cloud"},
+    {"liblocal_llm_component.so",
+     "rclcpp_components::NodeFactoryTemplate<LocalLlmNode>", "local_llm"},
+    {"libbrain_component.so",
+     "rclcpp_components::NodeFactoryTemplate<BrainNode>", "brain"},
 };
 
 // Resolve path to <install>/buddy_app/share/buddy_app/params/<name>.yaml
