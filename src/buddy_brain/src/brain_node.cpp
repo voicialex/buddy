@@ -21,8 +21,7 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State &) {
   declare_parameter("voice_trigger.attach_image", true);
 
   max_history_turns_ = get_parameter("max_history_turns").as_int();
-  emotion_trigger_enabled_ =
-      get_parameter("emotion_trigger.enabled").as_bool();
+  emotion_trigger_enabled_ = get_parameter("emotion_trigger.enabled").as_bool();
   negative_emotions_ =
       get_parameter("emotion_trigger.negative_emotions").as_string_array();
   emotion_confidence_threshold_ = static_cast<float>(
@@ -31,8 +30,7 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State &) {
       get_parameter("emotion_trigger.duration_seconds").as_double();
   emotion_cooldown_seconds_ =
       get_parameter("emotion_trigger.cooldown_seconds").as_double();
-  voice_attach_image_ =
-      get_parameter("voice_trigger.attach_image").as_bool();
+  voice_attach_image_ = get_parameter("voice_trigger.attach_image").as_bool();
 
   auto prompt_path = get_parameter("system_prompt_path").as_string();
   if (!prompt_path.empty()) {
@@ -44,9 +42,8 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State &) {
     }
   }
 
-  cloud_request_pub_ =
-      create_publisher<buddy_interfaces::msg::CloudRequest>(
-          "/brain/cloud_request", 10);
+  cloud_request_pub_ = create_publisher<buddy_interfaces::msg::CloudRequest>(
+      "/brain/cloud_request", 10);
   sentence_pub_ =
       create_publisher<buddy_interfaces::msg::Sentence>("/brain/sentence", 10);
 
@@ -66,9 +63,8 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State &) {
       "/audio/tts_done", 10,
       std::bind(&BrainNode::on_tts_done, this, std::placeholders::_1));
 
-  capture_client_ =
-      create_client<buddy_interfaces::srv::CaptureImage>(
-          "/vision/emotion/capture");
+  capture_client_ = create_client<buddy_interfaces::srv::CaptureImage>(
+      "/vision/emotion/capture");
 
   return CallbackReturn::SUCCESS;
 }
@@ -123,8 +119,7 @@ void BrainNode::on_asr_text(const std_msgs::msg::String &msg) {
   request_cloud("voice", msg.data);
 }
 
-void BrainNode::on_emotion(
-    const buddy_interfaces::msg::EmotionResult &msg) {
+void BrainNode::on_emotion(const buddy_interfaces::msg::EmotionResult &msg) {
   current_emotion_ = msg.emotion;
   emotion_confidence_ = msg.confidence;
 
@@ -142,15 +137,13 @@ void BrainNode::on_emotion(
       tracking_negative_ = true;
       negative_since_ = now;
     }
-    auto elapsed =
-        std::chrono::duration<double>(now - negative_since_).count();
+    auto elapsed = std::chrono::duration<double>(now - negative_since_).count();
     auto cooldown =
         std::chrono::duration<double>(now - last_proactive_trigger_).count();
 
     if (elapsed >= emotion_duration_seconds_ &&
         cooldown >= emotion_cooldown_seconds_) {
-      RCLCPP_INFO(get_logger(),
-                  "Emotion trigger: %s (%.2f) for %.1fs",
+      RCLCPP_INFO(get_logger(), "Emotion trigger: %s (%.2f) for %.1fs",
                   msg.emotion.c_str(), msg.confidence, elapsed);
       last_proactive_trigger_ = now;
       tracking_negative_ = false;
@@ -162,8 +155,7 @@ void BrainNode::on_emotion(
   }
 }
 
-void BrainNode::on_cloud_chunk(
-    const buddy_interfaces::msg::CloudChunk &msg) {
+void BrainNode::on_cloud_chunk(const buddy_interfaces::msg::CloudChunk &msg) {
   if (state_ != State::REQUESTING && state_ != State::SPEAKING)
     return;
 
@@ -201,8 +193,7 @@ void BrainNode::on_tts_done(const std_msgs::msg::Empty &) {
 void BrainNode::transition(State new_state) {
   static const char *names[] = {"IDLE", "LISTENING", "EMOTION_TRIGGER",
                                 "REQUESTING", "SPEAKING"};
-  RCLCPP_INFO(get_logger(), "State: %s -> %s",
-              names[static_cast<int>(state_)],
+  RCLCPP_INFO(get_logger(), "State: %s -> %s", names[static_cast<int>(state_)],
               names[static_cast<int>(new_state)]);
   state_ = new_state;
 }
@@ -263,11 +254,12 @@ std::vector<std::string> BrainNode::segment(const std::string &text) {
   sentence_buffer_ += text;
   std::vector<std::string> result;
   size_t last = 0;
-  const std::vector<std::string> delimiters = {
-      "\xe3\x80\x82", // 。
-      "\xef\xbc\x81", // ！
-      "\xef\xbc\x9f", // ？
-      ".", "!", "?"};
+  const std::vector<std::string> delimiters = {"\xe3\x80\x82", // 。
+                                               "\xef\xbc\x81", // ！
+                                               "\xef\xbc\x9f", // ？
+                                               ".",
+                                               "!",
+                                               "?"};
 
   while (last < sentence_buffer_.size()) {
     size_t best = std::string::npos;
@@ -284,9 +276,8 @@ std::vector<std::string> BrainNode::segment(const std::string &text) {
     last = best;
   }
 
-  sentence_buffer_ = (last < sentence_buffer_.size())
-                         ? sentence_buffer_.substr(last)
-                         : "";
+  sentence_buffer_ =
+      (last < sentence_buffer_.size()) ? sentence_buffer_.substr(last) : "";
 
   return result;
 }

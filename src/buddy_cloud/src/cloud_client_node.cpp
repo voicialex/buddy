@@ -21,8 +21,9 @@ CallbackReturn CloudClientNode::on_configure(const rclcpp_lifecycle::State &) {
   declare_parameter("provider", "doubao");
   declare_parameter("doubao.api_key", "");
   declare_parameter("doubao.model", "doubao-1.5-pro");
-  declare_parameter("doubao.endpoint",
-                    "https://ark.cn-beijing.volces.com/api/v3/chat/completions");
+  declare_parameter(
+      "doubao.endpoint",
+      "https://ark.cn-beijing.volces.com/api/v3/chat/completions");
   declare_parameter("image_max_width", 512);
   declare_parameter("timeout_seconds", 30);
 
@@ -39,11 +40,10 @@ CallbackReturn CloudClientNode::on_configure(const rclcpp_lifecycle::State &) {
 
   cloud_response_pub_ = create_publisher<buddy_interfaces::msg::CloudChunk>(
       "/cloud/response", 10);
-  cloud_request_sub_ =
-      create_subscription<buddy_interfaces::msg::CloudRequest>(
-          "/brain/cloud_request", 10,
-          std::bind(&CloudClientNode::on_cloud_request, this,
-                    std::placeholders::_1));
+  cloud_request_sub_ = create_subscription<buddy_interfaces::msg::CloudRequest>(
+      "/brain/cloud_request", 10,
+      std::bind(&CloudClientNode::on_cloud_request, this,
+                std::placeholders::_1));
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
   return CallbackReturn::SUCCESS;
@@ -75,8 +75,8 @@ CallbackReturn CloudClientNode::on_error(const rclcpp_lifecycle::State &) {
 
 void CloudClientNode::on_cloud_request(
     const buddy_interfaces::msg::CloudRequest &msg) {
-  RCLCPP_INFO(get_logger(), "Cloud request [%s]: %s",
-              msg.trigger_type.c_str(), msg.user_text.c_str());
+  RCLCPP_INFO(get_logger(), "Cloud request [%s]: %s", msg.trigger_type.c_str(),
+              msg.user_text.c_str());
   std::thread([this, msg]() { call_doubao(msg); }).detach();
 }
 
@@ -104,8 +104,10 @@ CloudClientNode::encode_image_base64(const sensor_msgs::msg::Image &image,
   b64.reserve(((buf.size() + 2) / 3) * 4);
   for (size_t i = 0; i < buf.size(); i += 3) {
     uint32_t n = static_cast<uint32_t>(buf[i]) << 16;
-    if (i + 1 < buf.size()) n |= static_cast<uint32_t>(buf[i + 1]) << 8;
-    if (i + 2 < buf.size()) n |= static_cast<uint32_t>(buf[i + 2]);
+    if (i + 1 < buf.size())
+      n |= static_cast<uint32_t>(buf[i + 1]) << 8;
+    if (i + 2 < buf.size())
+      n |= static_cast<uint32_t>(buf[i + 2]);
     b64 += table[(n >> 18) & 0x3F];
     b64 += table[(n >> 12) & 0x3F];
     b64 += (i + 1 < buf.size()) ? table[(n >> 6) & 0x3F] : '=';
@@ -130,8 +132,8 @@ void CloudClientNode::call_doubao(
   messages << "[";
 
   if (!msg.system_prompt.empty()) {
-    messages << R"({\"role\":\"system\",\"content\":\"")"
-             << msg.system_prompt << R"(\"},)";
+    messages << R"({\"role\":\"system\",\"content\":\"")" << msg.system_prompt
+             << R"(\"},)";
   }
 
   for (auto &h : msg.dialog_history) {
@@ -139,8 +141,8 @@ void CloudClientNode::call_doubao(
     if (colon != std::string::npos) {
       auto role = h.substr(0, colon);
       auto content = h.substr(colon + 2);
-      messages << R"({\"role\":\"")" << role << R"(\",\"content\":\"")" << content
-               << R"(\"},)";
+      messages << R"({\"role\":\"")" << role << R"(\",\"content\":\"")"
+               << content << R"(\"},)";
     }
   }
 
@@ -148,27 +150,28 @@ void CloudClientNode::call_doubao(
 
   std::string text_content = msg.user_text;
   if (text_content.empty() && msg.trigger_type == "emotion") {
-    text_content = "I notice you seem " + msg.emotion +
-                   ". How are you feeling?";
+    text_content =
+        "I notice you seem " + msg.emotion + ". How are you feeling?";
   }
   if (!msg.emotion.empty()) {
-    text_content += " [emotion: " + msg.emotion + " " +
-                    std::to_string(static_cast<int>(msg.emotion_confidence * 100)) +
-                    "%]";
+    text_content +=
+        " [emotion: " + msg.emotion + " " +
+        std::to_string(static_cast<int>(msg.emotion_confidence * 100)) + "%]";
   }
   messages << R"({\"type\":\"text\",\"text\":\"")" << text_content << R"(\"})";
 
   if (!msg.image.data.empty()) {
     auto b64 = encode_image_base64(msg.image, image_max_width_);
-    messages << R"(,{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,)"
-             << b64 << R"(\"}})";
+    messages
+        << R"(,{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,)"
+        << b64 << R"(\"}})";
   }
 
   messages << "]}]";
 
   std::ostringstream body;
-  body << R"({\"model\":\"")" << model_
-       << R"(\",\"messages\":)" << messages.str() << "}";
+  body << R"({\"model\":\"")" << model_ << R"(\",\"messages\":)"
+       << messages.str() << "}";
 
   CURL *curl = curl_easy_init();
   if (!curl) {
@@ -197,8 +200,7 @@ void CloudClientNode::call_doubao(
   chunk.session_id = "doubao";
 
   if (res != CURLE_OK) {
-    RCLCPP_ERROR(get_logger(), "Doubao API error: %s",
-                 curl_easy_strerror(res));
+    RCLCPP_ERROR(get_logger(), "Doubao API error: %s", curl_easy_strerror(res));
     chunk.chunk_text = "Cloud request failed.";
     chunk.is_final = true;
     cloud_response_pub_->publish(chunk);

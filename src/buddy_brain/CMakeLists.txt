@@ -13,9 +13,8 @@ find_package(buddy_interfaces REQUIRED)
 
 add_library(brain_component SHARED src/brain_node.cpp)
 target_include_directories(
-  brain_component
-  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-         $<INSTALL_INTERFACE:include>)
+  brain_component PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                         $<INSTALL_INTERFACE:include>)
 target_compile_features(brain_component PUBLIC cxx_std_17)
 ament_target_dependencies(
   brain_component
@@ -51,8 +50,7 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_segment test/test_segment.cpp src/brain_node.cpp)
   target_include_directories(
-    test_segment
-    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+    test_segment PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
   target_compile_features(test_segment PUBLIC cxx_std_17)
   ament_target_dependencies(
     test_segment

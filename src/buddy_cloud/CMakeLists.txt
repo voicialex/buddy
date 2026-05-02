@@ -17,8 +17,14 @@ target_include_directories(
   cloud_component PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                          $<INSTALL_INTERFACE:include>)
 target_compile_features(cloud_component PUBLIC cxx_std_17)
-ament_target_dependencies(cloud_component rclcpp rclcpp_lifecycle
-                          rclcpp_components buddy_interfaces sensor_msgs OpenCV)
+ament_target_dependencies(
+  cloud_component
+  rclcpp
+  rclcpp_lifecycle
+  rclcpp_components
+  buddy_interfaces
+  sensor_msgs
+  OpenCV)
 rclcpp_components_register_nodes(cloud_component "CloudClientNode")
 target_link_libraries(cloud_component ${CURL_LIBRARIES})
 target_include_directories(cloud_component PRIVATE ${CURL_INCLUDE_DIRS})
@@ -36,9 +42,14 @@ if(BUILD_TESTING)
     test_cloud_node
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
   target_compile_features(test_cloud_node PUBLIC cxx_std_17)
-  ament_target_dependencies(test_cloud_node rclcpp rclcpp_lifecycle
-                            rclcpp_components buddy_interfaces sensor_msgs
-                            OpenCV)
+  ament_target_dependencies(
+    test_cloud_node
+    rclcpp
+    rclcpp_lifecycle
+    rclcpp_components
+    buddy_interfaces
+    sensor_msgs
+    OpenCV)
   target_link_libraries(test_cloud_node ${CURL_LIBRARIES})
   target_include_directories(test_cloud_node PRIVATE ${CURL_INCLUDE_DIRS})
 endif()
