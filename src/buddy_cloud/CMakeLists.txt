@@ -9,6 +9,8 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(buddy_interfaces REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(CURL REQUIRED)
+find_package(OpenCV REQUIRED)
 
 add_library(cloud_component SHARED src/cloud_client_node.cpp)
 target_include_directories(
@@ -16,8 +18,10 @@ target_include_directories(
                          $<INSTALL_INTERFACE:include>)
 target_compile_features(cloud_component PUBLIC cxx_std_17)
 ament_target_dependencies(cloud_component rclcpp rclcpp_lifecycle
-                          rclcpp_components buddy_interfaces sensor_msgs)
+                          rclcpp_components buddy_interfaces sensor_msgs OpenCV)
 rclcpp_components_register_nodes(cloud_component "CloudClientNode")
+target_link_libraries(cloud_component ${CURL_LIBRARIES})
+target_include_directories(cloud_component PRIVATE ${CURL_INCLUDE_DIRS})
 install(
   TARGETS cloud_component
   ARCHIVE DESTINATION lib
@@ -33,6 +37,9 @@ if(BUILD_TESTING)
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
   target_compile_features(test_cloud_node PUBLIC cxx_std_17)
   ament_target_dependencies(test_cloud_node rclcpp rclcpp_lifecycle
-                            rclcpp_components buddy_interfaces)
+                            rclcpp_components buddy_interfaces sensor_msgs
+                            OpenCV)
+  target_link_libraries(test_cloud_node ${CURL_LIBRARIES})
+  target_include_directories(test_cloud_node PRIVATE ${CURL_INCLUDE_DIRS})
 endif()
 ament_package()

@@ -4,6 +4,9 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
 
+#include <string>
+#include <thread>
+
 using CallbackReturn =
     rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
@@ -20,8 +23,18 @@ public:
 
 private:
   void on_cloud_request(const buddy_interfaces::msg::CloudRequest &msg);
+  void call_doubao(const buddy_interfaces::msg::CloudRequest &msg);
+  std::string encode_image_base64(const sensor_msgs::msg::Image &image,
+                                  int max_width);
+
   rclcpp::Publisher<buddy_interfaces::msg::CloudChunk>::SharedPtr
       cloud_response_pub_;
   rclcpp::Subscription<buddy_interfaces::msg::CloudRequest>::SharedPtr
       cloud_request_sub_;
+
+  std::string api_key_;
+  std::string model_;
+  std::string endpoint_;
+  int image_max_width_{512};
+  int timeout_seconds_{30};
 };
