@@ -14,6 +14,7 @@ rosidl_generate_interfaces(
   "msg/Sentence.msg"
   "msg/EmotionResult.msg"
   "msg/DisplayCommand.msg"
+  "msg/CloudRequest.msg"
   "srv/CaptureImage.srv"
   DEPENDENCIES
   builtin_interfaces
