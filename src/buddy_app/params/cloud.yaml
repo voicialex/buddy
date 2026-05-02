@@ -1,5 +1,9 @@
 cloud:
   ros__parameters:
-    gateway_url: "wss://gateway.example.com/v1/companion/session"
-    reconnect_base_ms: 200
-    reconnect_max_ms: 800
+    provider: "doubao"
+    doubao:
+      api_key: ""
+      model: "doubao-1.5-pro"
+      endpoint: "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
+    image_max_width: 512
+    timeout_seconds: 30
