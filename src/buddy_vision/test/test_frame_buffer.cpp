@@ -1,7 +1,7 @@
 #include "buddy_vision/frame_buffer.hpp"
-#include <gtest/gtest.h>
 #include <atomic>
 #include <chrono>
+#include <gtest/gtest.h>
 #include <thread>
 
 TEST(FrameBufferTest, WriteThenSnapshotReturnsLatest) {

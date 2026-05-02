@@ -17,12 +17,11 @@
 
 - `src/buddy_interfaces`：消息与服务定义
 - `src/buddy_audio`：音频入口与 TTS 回执
-- `src/buddy_vision`：视觉处理链路
+- `src/buddy_vision`：视觉处理链路（详见 [vision_architecture.md](vision_architecture.md)）
 - `src/buddy_cloud`：云端请求与流式回包
 - `src/buddy_state_machine`：流程编排
 - `src/buddy_dialog`：对话管理
 - `src/buddy_sentence`：切句
-- `src/buddy_app`：C++ 入口程序，加载所有组件
 - `src/buddy_app`：C++ 入口程序，加载所有组件，包含参数配置
 
 ## 3. 运行拓扑

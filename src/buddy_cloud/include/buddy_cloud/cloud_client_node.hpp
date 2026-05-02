@@ -1,6 +1,6 @@
 #pragma once
 #include <buddy_interfaces/msg/cloud_chunk.hpp>
-#include <buddy_interfaces/msg/user_input.hpp>
+#include <buddy_interfaces/msg/cloud_request.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
 
@@ -19,9 +19,9 @@ public:
   CallbackReturn on_error(const rclcpp_lifecycle::State &) override;
 
 private:
-  void on_user_input(const buddy_interfaces::msg::UserInput &msg);
+  void on_cloud_request(const buddy_interfaces::msg::CloudRequest &msg);
   rclcpp::Publisher<buddy_interfaces::msg::CloudChunk>::SharedPtr
       cloud_response_pub_;
-  rclcpp::Subscription<buddy_interfaces::msg::UserInput>::SharedPtr
-      user_input_sub_;
+  rclcpp::Subscription<buddy_interfaces::msg::CloudRequest>::SharedPtr
+      cloud_request_sub_;
 };

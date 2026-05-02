@@ -12,7 +12,7 @@ AudioPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
       create_publisher<std_msgs::msg::String>("/audio/asr_text", 10);
   tts_done_pub_ = create_publisher<std_msgs::msg::Empty>("/audio/tts_done", 10);
   sentence_sub_ = create_subscription<buddy_interfaces::msg::Sentence>(
-      "/dialog/sentence", 10,
+      "/brain/sentence", 10,
       std::bind(&AudioPipelineNode::on_sentence, this, std::placeholders::_1));
   return CallbackReturn::SUCCESS;
 }

@@ -8,6 +8,7 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(buddy_interfaces REQUIRED)
+find_package(sensor_msgs REQUIRED)
 
 add_library(cloud_component SHARED src/cloud_client_node.cpp)
 target_include_directories(
@@ -15,7 +16,7 @@ target_include_directories(
                          $<INSTALL_INTERFACE:include>)
 target_compile_features(cloud_component PUBLIC cxx_std_17)
 ament_target_dependencies(cloud_component rclcpp rclcpp_lifecycle
-                          rclcpp_components buddy_interfaces)
+                          rclcpp_components buddy_interfaces sensor_msgs)
 rclcpp_components_register_nodes(cloud_component "CloudClientNode")
 install(
   TARGETS cloud_component

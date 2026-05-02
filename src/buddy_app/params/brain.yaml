@@ -1,0 +1,12 @@
+brain:
+  ros__parameters:
+    system_prompt_path: ""
+    max_history_turns: 10
+    emotion_trigger:
+      enabled: true
+      negative_emotions: ["sad", "angry", "fear"]
+      confidence_threshold: 0.7
+      duration_seconds: 3.0
+      cooldown_seconds: 60.0
+    voice_trigger:
+      attach_image: true

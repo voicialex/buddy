@@ -5,7 +5,7 @@ vision:
       emotion:
         # HUE HD Pro USB camera (/dev/video0)
         # Run: v4l2-ctl --list-devices to confirm /dev/videoN
-        device_path: "/dev/video0"
+        device_path: "/dev/video6"
         frame_width: 640
         frame_height: 480
         model_path: "models/emotion"

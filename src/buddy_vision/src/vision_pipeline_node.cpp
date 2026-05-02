@@ -24,8 +24,8 @@ VisionPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
   try {
     pkg_path = ament_index_cpp::get_package_share_directory("buddy_vision");
   } catch (const std::exception &e) {
-    RCLCPP_WARN(get_logger(),
-                "Could not resolve buddy_vision package path: %s", e.what());
+    RCLCPP_WARN(get_logger(), "Could not resolve buddy_vision package path: %s",
+                e.what());
     pkg_path = "";
   }
 
@@ -38,18 +38,16 @@ VisionPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
     }
 
     // Always register topic and service so the ROS graph is complete
-    result_pubs_[name] =
-        create_publisher<buddy_interfaces::msg::EmotionResult>(
-            "/vision/" + name + "/result", 10);
+    result_pubs_[name] = create_publisher<buddy_interfaces::msg::EmotionResult>(
+        "/vision/" + name + "/result", 10);
 
-    capture_srvs_[name] =
-        create_service<buddy_interfaces::srv::CaptureImage>(
-            "/vision/" + name + "/capture",
-            [this, n = name](
-                const std::shared_ptr<buddy_interfaces::srv::CaptureImage::Request> req,
-                std::shared_ptr<buddy_interfaces::srv::CaptureImage::Response> res) {
-              handle_capture(n, req, res);
-            });
+    capture_srvs_[name] = create_service<buddy_interfaces::srv::CaptureImage>(
+        "/vision/" + name + "/capture",
+        [this, n = name](
+            const std::shared_ptr<buddy_interfaces::srv::CaptureImage::Request>
+                req,
+            std::shared_ptr<buddy_interfaces::srv::CaptureImage::Response>
+                res) { handle_capture(n, req, res); });
 
     // Probe device existence; skip worker creation if not available
     if (!std::ifstream(cfg.device_path).good()) {
@@ -61,13 +59,12 @@ VisionPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
     }
 
     auto model = std::make_unique<EmotionOnnxModel>();
-    workers_[name] = std::make_unique<CameraWorker>(
-        cfg, get_logger(), std::move(model), preview);
+    workers_[name] = std::make_unique<CameraWorker>(cfg, get_logger(),
+                                                    std::move(model), preview);
 
     workers_[name]->set_result_callback(
-        [this, pub = result_pubs_[name], n = name,
-         last_label = std::string{}](const std::string &label,
-                                      float confidence) mutable {
+        [this, pub = result_pubs_[name], n = name, last_label = std::string{}](
+            const std::string &label, float confidence) mutable {
           if (label != last_label) {
             RCLCPP_INFO(get_logger(), "[%s] %s (%.2f)", n.c_str(),
                         label.c_str(), confidence);
@@ -80,8 +77,8 @@ VisionPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
           pub->publish(msg);
         });
 
-    RCLCPP_INFO(get_logger(), "Configured camera: [%s] → %s",
-                name.c_str(), cfg.device_path.c_str());
+    RCLCPP_INFO(get_logger(), "Configured camera: [%s] → %s", name.c_str(),
+                cfg.device_path.c_str());
   }
 
   return CallbackReturn::SUCCESS;
@@ -113,8 +110,7 @@ VisionPipelineNode::on_deactivate(const rclcpp_lifecycle::State &) {
   return CallbackReturn::SUCCESS;
 }
 
-CallbackReturn
-VisionPipelineNode::on_cleanup(const rclcpp_lifecycle::State &) {
+CallbackReturn VisionPipelineNode::on_cleanup(const rclcpp_lifecycle::State &) {
   RCLCPP_INFO(get_logger(), "VisionPipelineNode: cleaning up");
   workers_.clear();
   pending_configs_.clear();
@@ -129,8 +125,7 @@ VisionPipelineNode::on_shutdown(const rclcpp_lifecycle::State &) {
   return CallbackReturn::SUCCESS;
 }
 
-CallbackReturn
-VisionPipelineNode::on_error(const rclcpp_lifecycle::State &) {
+CallbackReturn VisionPipelineNode::on_error(const rclcpp_lifecycle::State &) {
   RCLCPP_ERROR(get_logger(), "VisionPipelineNode: error");
   return CallbackReturn::SUCCESS;
 }
@@ -144,17 +139,18 @@ std::vector<std::string> VisionPipelineNode::discover_camera_names() {
   std::set<std::string> names;
   for (auto &p : result.names) {
     const std::string prefix = "cameras.";
-    if (p.rfind(prefix, 0) != 0) continue;
+    if (p.rfind(prefix, 0) != 0)
+      continue;
     auto rest = p.substr(prefix.size());
     auto dot = rest.find('.');
-    if (dot == std::string::npos) continue;
+    if (dot == std::string::npos)
+      continue;
     names.insert(rest.substr(0, dot));
   }
   return {names.begin(), names.end()};
 }
 
-CameraConfig
-VisionPipelineNode::load_camera_config(const std::string &name) {
+CameraConfig VisionPipelineNode::load_camera_config(const std::string &name) {
   auto prefix = "cameras." + name + ".";
   CameraConfig cfg;
   cfg.name = name;

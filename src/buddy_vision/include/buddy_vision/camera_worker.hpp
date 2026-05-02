@@ -30,9 +30,8 @@ public:
 
   CameraWorker(const CameraConfig &config, rclcpp::Logger logger,
                std::unique_ptr<ModelInterface> model, bool preview = false)
-      : config_(config), logger_(logger),
-        model_(std::move(model)), running_(false),
-        preview_enabled_(preview) {}
+      : config_(config), logger_(logger), model_(std::move(model)),
+        running_(false), preview_enabled_(preview) {}
 
   ~CameraWorker() { stop(); }
 
@@ -105,10 +104,9 @@ private:
       // FPS calculation
       fps_frame_count++;
       auto now = std::chrono::steady_clock::now();
-      auto fps_elapsed =
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-              now - last_fps_time_)
-              .count();
+      auto fps_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             now - last_fps_time_)
+                             .count();
       if (fps_elapsed >= 1000) {
         current_fps = fps_frame_count * 1000.0 / fps_elapsed;
         fps_frame_count = 0;
@@ -125,27 +123,27 @@ private:
         {
           std::lock_guard<std::mutex> lock(overlay_mtx_);
           if (!overlay_face_rect_.empty()) {
-            cv::rectangle(display, overlay_face_rect_,
-                          cv::Scalar(0, 255, 0), 2);
-            std::string text = overlay_emotion_ + " " +
-                               std::to_string(
-                                   static_cast<int>(overlay_confidence_ * 100)) +
-                               "%";
+            cv::rectangle(display, overlay_face_rect_, cv::Scalar(0, 255, 0),
+                          2);
+            std::string text =
+                overlay_emotion_ + " " +
+                std::to_string(static_cast<int>(overlay_confidence_ * 100)) +
+                "%";
             int baseline = 0;
             auto text_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX,
-                                              0.7, 2, &baseline);
+                                             0.7, 2, &baseline);
             int text_y = overlay_face_rect_.y - 8;
             if (text_y < text_size.height) {
               text_y = overlay_face_rect_.y + text_size.height + 8;
             }
-            cv::putText(display, text,
-                        cv::Point(overlay_face_rect_.x, text_y),
-                        cv::FONT_HERSHEY_SIMPLEX, 0.7,
-                        cv::Scalar(0, 255, 0), 2);
+            cv::putText(display, text, cv::Point(overlay_face_rect_.x, text_y),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0),
+                        2);
           }
         }
         // FPS top-left
-        std::string fps_text = "FPS: " + std::to_string(static_cast<int>(current_fps));
+        std::string fps_text =
+            "FPS: " + std::to_string(static_cast<int>(current_fps));
         cv::putText(display, fps_text, cv::Point(10, 25),
                     cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 255), 2);
         cv::imshow(win_name, display);
@@ -195,7 +193,8 @@ private:
       while (running_ && std::chrono::steady_clock::now() < deadline) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
-      if (!running_) return;
+      if (!running_)
+        return;
       cap_.open(config_.device_path, cv::CAP_V4L2);
       if (cap_.isOpened()) {
         cap_.set(cv::CAP_PROP_FRAME_WIDTH, config_.frame_width);

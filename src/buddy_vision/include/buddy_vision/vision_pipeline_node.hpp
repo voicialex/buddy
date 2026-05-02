@@ -4,10 +4,10 @@
 
 #include <buddy_interfaces/msg/emotion_result.hpp>
 #include <buddy_interfaces/srv/capture_image.hpp>
-#include <rclcpp/rclcpp.hpp>
-#include <rclcpp_lifecycle/lifecycle_node.hpp>
 #include <map>
 #include <memory>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp_lifecycle/lifecycle_node.hpp>
 #include <string>
 #include <vector>
 

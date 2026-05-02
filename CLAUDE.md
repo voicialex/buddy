@@ -99,6 +99,7 @@ The prefix `feat(module): [PRO-10000] ` is a constant string — never change it
 ## Key Docs
 
 - `docs/architecture.md` — component topology and dependency strategy
+- `docs/vision_architecture.md` — buddy_vision internal architecture and data flow
 - `docs/communication_protocol.md` — ROS 2 topic/service contracts
 - `docs/plan.md` — implementation roadmap
 - `docs/models.md` — model preparation notes

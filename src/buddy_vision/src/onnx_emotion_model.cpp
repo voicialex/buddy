@@ -26,8 +26,8 @@ bool EmotionOnnxModel::load(const std::string &model_dir) {
   session_opts_.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
 
   try {
-    emotion_session_ = std::make_unique<Ort::Session>(env_, emotion_path.c_str(),
-                                                       session_opts_);
+    emotion_session_ = std::make_unique<Ort::Session>(
+        env_, emotion_path.c_str(), session_opts_);
   } catch (const Ort::Exception &e) {
     std::fprintf(stderr, "EmotionOnnxModel: failed to load emotion model: %s\n",
                  e.what());
@@ -61,16 +61,16 @@ ModelResult EmotionOnnxModel::inference(const cv::Mat &frame) {
 
   float fx = face[0], fy = face[1], fw = face[2], fh = face[3];
   cv::Rect detected_rect(static_cast<int>(fx), static_cast<int>(fy),
-                          static_cast<int>(fw), static_cast<int>(fh));
+                         static_cast<int>(fw), static_cast<int>(fh));
 
   float margin_x = fw * 0.2f;
   float margin_y = fh * 0.2f;
   int x1 = static_cast<int>(std::max(0.0f, fx - margin_x));
   int y1 = static_cast<int>(std::max(0.0f, fy - margin_y));
-  int x2 = static_cast<int>(std::min(static_cast<float>(frame.cols),
-                                      fx + fw + margin_x));
-  int y2 = static_cast<int>(std::min(static_cast<float>(frame.rows),
-                                      fy + fh + margin_y));
+  int x2 = static_cast<int>(
+      std::min(static_cast<float>(frame.cols), fx + fw + margin_x));
+  int y2 = static_cast<int>(
+      std::min(static_cast<float>(frame.rows), fy + fh + margin_y));
 
   cv::Rect crop_rect(x1, y1, x2 - x1, y2 - y1);
   cv::Mat face_crop = frame(crop_rect);
@@ -113,15 +113,14 @@ std::vector<float> EmotionOnnxModel::detect_face(const cv::Mat &bgr_frame) {
 // ---------------------------------------------------------------------------
 // classify_emotion – ONNX Runtime inference + softmax
 // ---------------------------------------------------------------------------
-std::array<float, 7> EmotionOnnxModel::classify_emotion(
-    const cv::Mat &face_crop) {
+std::array<float, 7>
+EmotionOnnxModel::classify_emotion(const cv::Mat &face_crop) {
   std::array<float, 7> probs{};
 
   Ort::AllocatorWithDefaultOptions allocator;
   auto input_tensor = mat_to_tensor(face_crop, 224, 224);
 
-  auto input_name_alloc =
-      emotion_session_->GetInputNameAllocated(0, allocator);
+  auto input_name_alloc = emotion_session_->GetInputNameAllocated(0, allocator);
   const char *input_names[] = {input_name_alloc.get()};
 
   auto output_name_alloc =
@@ -153,8 +152,8 @@ std::array<float, 7> EmotionOnnxModel::classify_emotion(
 // ---------------------------------------------------------------------------
 // mat_to_tensor – BGR cv::Mat -> Ort::Value [1, 3, H, W] float32 normalized
 // ---------------------------------------------------------------------------
-Ort::Value EmotionOnnxModel::mat_to_tensor(const cv::Mat &image,
-                                            int target_w, int target_h) {
+Ort::Value EmotionOnnxModel::mat_to_tensor(const cv::Mat &image, int target_w,
+                                           int target_h) {
   cv::Mat resized;
   cv::resize(image, resized, cv::Size(target_w, target_h));
 
@@ -176,9 +175,8 @@ Ort::Value EmotionOnnxModel::mat_to_tensor(const cv::Mat &image,
   std::array<int64_t, 4> shape = {1, 3, target_h, target_w};
   auto memory_info =
       Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  return Ort::Value::CreateTensor<float>(memory_info, tensor_data.data(),
-                                          tensor_size, shape.data(),
-                                          shape.size());
+  return Ort::Value::CreateTensor<float>(
+      memory_info, tensor_data.data(), tensor_size, shape.data(), shape.size());
 }
 
 // ---------------------------------------------------------------------------

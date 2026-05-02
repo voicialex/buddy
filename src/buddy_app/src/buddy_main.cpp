@@ -1,8 +1,8 @@
 #include <class_loader/class_loader.hpp>
+#include <lifecycle_msgs/msg/state.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_components/node_factory.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
-#include <lifecycle_msgs/msg/state.hpp>
 
 #include <filesystem>
 #include <memory>
@@ -25,16 +25,10 @@ static const std::vector<ComponentEntry> kComponents = {
      "rclcpp_components::NodeFactoryTemplate<AudioPipelineNode>", "audio"},
     {"libvision_component.so",
      "rclcpp_components::NodeFactoryTemplate<VisionPipelineNode>", "vision"},
+    {"libbrain_component.so",
+     "rclcpp_components::NodeFactoryTemplate<BrainNode>", "brain"},
     {"libcloud_component.so",
      "rclcpp_components::NodeFactoryTemplate<CloudClientNode>", "cloud"},
-    {"libstate_machine_component.so",
-     "rclcpp_components::NodeFactoryTemplate<StateMachineNode>",
-     "state_machine"},
-    {"libdialog_component.so",
-     "rclcpp_components::NodeFactoryTemplate<DialogManagerNode>", "dialog"},
-    {"libsentence_component.so",
-     "rclcpp_components::NodeFactoryTemplate<SentenceSegmenterNode>",
-     "sentence"},
 };
 
 // Resolve path to <install>/buddy_app/share/buddy_app/params/<name>.yaml
@@ -56,7 +50,7 @@ static std::string find_library(const fs::path &install_dir,
 
 // Load modules.yaml and return the set of disabled module names
 static std::set<std::string> load_disabled_modules(const fs::path &install_dir,
-                                                    rclcpp::Logger &logger) {
+                                                   rclcpp::Logger &logger) {
   std::set<std::string> disabled;
   auto path = install_dir / "buddy_app" / "share" / "buddy_app" / "params" /
               "modules.yaml";
@@ -116,7 +110,8 @@ int main(int argc, char **argv) {
   auto disabled = load_disabled_modules(install_dir, logger);
   if (!disabled.empty()) {
     for (auto &name : disabled) {
-      RCLCPP_DEBUG(logger, "Module [%s] disabled via modules.yaml", name.c_str());
+      RCLCPP_DEBUG(logger, "Module [%s] disabled via modules.yaml",
+                   name.c_str());
     }
   }
 
@@ -125,7 +120,7 @@ int main(int argc, char **argv) {
   for (const auto &entry : kComponents) {
     if (disabled.count(entry.param_name)) {
       RCLCPP_DEBUG(logger, "Skipping disabled module: %s",
-                  entry.param_name.c_str());
+                   entry.param_name.c_str());
       continue;
     }
     auto lib_path = find_library(install_dir, entry.library);

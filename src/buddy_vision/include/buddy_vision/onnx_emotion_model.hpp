@@ -2,10 +2,10 @@
 
 #include "buddy_vision/model_interface.hpp"
 
-#include <onnxruntime_cxx_api.h>
-#include <opencv2/objdetect.hpp>
 #include <array>
 #include <memory>
+#include <onnxruntime_cxx_api.h>
+#include <opencv2/objdetect.hpp>
 #include <string>
 
 class EmotionOnnxModel : public ModelInterface {
@@ -37,6 +37,5 @@ private:
   bool loaded_{false};
 
   static constexpr const char *kEmotionLabels[] = {
-      "angry", "disgust", "fear", "happy",
-      "sad",   "surprise", "neutral"};
+      "angry", "disgust", "fear", "happy", "sad", "surprise", "neutral"};
 };
