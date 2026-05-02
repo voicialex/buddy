@@ -23,12 +23,22 @@
 
 ## 3. Topic/Service 约束
 
-1. Topic 命名保持“模块前缀 + 语义名”，例如 `/audio/wake_word`、`/dialog/sentence`。
+1. Topic 命名保持“模块前缀 + 语义名”，例如 `/audio/wake_word`、`/brain/sentence`。
+
+### Topic 列表（v4 架构）
+
+- `/audio/wake_word`   — 唤醒词检测信号
+- `/brain/cloud_request` — Brain → Cloud 请求（CloudRequest）
+- `/cloud/response` — 云端流式响应（CloudChunk）
+- `/brain/sentence` — 流式分句结果（Sentence）
+
+*已移除：`/dialog/user_input`、`/dialog/cloud_response`、`/dialog/sentence`，统一整合至 Brain/Cloud方案*
+
 2. 服务用于显式请求-响应场景，事件流优先 Topic。
 3. 新增字段必须向后兼容，消费者可忽略未知字段。
 
 ## 4. 时序原则
 
-1. 状态编排由 `buddy_state_machine` 负责。
-2. 云端增量文本由 `buddy_cloud` 发布，`buddy_sentence` 负责切句。
-3. `buddy_audio` 发送播放完成信号，驱动状态推进。
+1. 状态与上下文编排由 `buddy_brain` 负责。
+2. 云端多模态响应由 `buddy_cloud` 发布，`buddy_brain` 流式切句。
+3. `buddy_audio` 发送播放完成信号，驱动主流程。

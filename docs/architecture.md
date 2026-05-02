@@ -19,9 +19,7 @@
 - `src/buddy_audio`：音频入口与 TTS 回执
 - `src/buddy_vision`：视觉处理链路（详见 [vision_architecture.md](vision_architecture.md)）
 - `src/buddy_cloud`：云端请求与流式回包
-- `src/buddy_state_machine`：流程编排
-- `src/buddy_dialog`：对话管理
-- `src/buddy_sentence`：切句
+- `src/buddy_brain`：中央编排（状态机 + 对话上下文 + 切句）
 - `src/buddy_app`：C++ 入口程序，加载所有组件，包含参数配置
 
 ## 3. 运行拓扑
@@ -30,12 +28,17 @@
 
 主链路（简化）：
 
-1. Audio/Dialog 触发请求
-2. StateMachine 组织上下文
-3. Vision 提供图像结果（可选）
-4. Cloud 返回流式文本
-5. Sentence 切句
-6. Audio 播放并回执
+主流程（新架构）如下：
+
+```
+Audio → Brain → Vision (optional) → Cloud → Brain → Audio playback
+```
+
+1. buddy_audio — 唤醒词检测、ASR、TTS回放
+2. buddy_brain — 状态机、对话上下文、切句
+3. buddy_vision — 图像采集与情感识别
+4. buddy_cloud — 豆包API多模态请求（云端）
+5. buddy_brain — 响应流式切句 → audio TTS
 
 ## 4. 依赖策略
 

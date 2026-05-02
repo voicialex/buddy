@@ -48,19 +48,18 @@ ROS 2 component workspace. All modules run as `rclcpp_components` in a single pr
 ### Main Pipeline Flow
 
 ```
-Audio/Dialog → StateMachine → Vision (optional) → Cloud → Sentence → Audio playback
+Audio → Brain → Vision (optional) → Cloud → Brain → Audio playback
 ```
 
-1. `buddy_audio` — wake word detection, TTS playback, playback-done signaling
-2. `buddy_dialog` — dialog management, user input assembly
-3. `buddy_state_machine` — orchestrates the full conversation flow
-4. `buddy_vision` — image capture and processing pipeline
-5. `buddy_cloud` — cloud API requests, streams back `CloudChunk` messages
-6. `buddy_sentence` — sentence segmentation of streaming text
+1. `buddy_audio` — wake word, ASR, TTS playback
+2. `buddy_brain` — state machine, dialog context, sentence segmentation
+3. `buddy_vision` — image capture and emotion recognition
+4. `buddy_cloud` — Doubao API multimodal requests
+5. `buddy_brain` — streaming response segmentation → audio TTS
 
 ### Supporting Packages
 
-- `buddy_interfaces` — custom `.msg`/`.srv` definitions (`UserInput`, `CloudChunk`, `Sentence`, `ExpressionResult`, `DisplayCommand`, `CaptureImage`)
+- `buddy_interfaces` — custom `.msg`/`.srv` definitions (`CloudRequest`, `CloudChunk`, `Sentence`, `ExpressionResult`, `DisplayCommand`, `CaptureImage`)
 - `buddy_app` — C++ entry point (`buddy_main`) that loads all components into one process
 - `buddy_app/params/` — runtime parameter YAML files
 
