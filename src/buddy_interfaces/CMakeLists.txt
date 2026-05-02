@@ -9,11 +9,9 @@ find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
-  "msg/UserInput.msg"
   "msg/CloudChunk.msg"
   "msg/Sentence.msg"
   "msg/EmotionResult.msg"
-  "msg/DisplayCommand.msg"
   "msg/CloudRequest.msg"
   "srv/CaptureImage.srv"
   DEPENDENCIES

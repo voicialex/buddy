@@ -1,6 +1,5 @@
 #include "buddy_audio/audio_pipeline_node.hpp"
 
-#include <cstring>
 #include <vector>
 
 AudioPipelineNode::AudioPipelineNode(const rclcpp::NodeOptions &options)
@@ -43,14 +42,12 @@ AudioPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
   auto asr_tokens = get_parameter("asr.tokens").as_string();
   auto asr_method = get_parameter("asr.decoding_method").as_string();
 
-  // --- KWS init ---
   if (kws_encoder.empty()) {
     RCLCPP_ERROR(get_logger(), "KWS encoder path not set");
     return CallbackReturn::FAILURE;
   }
 
-  SherpaOnnxKeywordSpotterConfig kws_cfg;
-  memset(&kws_cfg, 0, sizeof(kws_cfg));
+  SherpaOnnxKeywordSpotterConfig kws_cfg{};
   kws_cfg.feat_config.sample_rate = sample_rate_;
   kws_cfg.feat_config.feature_dim = 80;
   kws_cfg.model_config.transducer.encoder = kws_encoder.c_str();
@@ -72,8 +69,7 @@ AudioPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
   kws_stream_ = SherpaOnnxCreateKeywordStream(kws_);
 
   // --- ASR init ---
-  SherpaOnnxOnlineRecognizerConfig asr_cfg;
-  memset(&asr_cfg, 0, sizeof(asr_cfg));
+  SherpaOnnxOnlineRecognizerConfig asr_cfg{};
   asr_cfg.feat_config.sample_rate = sample_rate_;
   asr_cfg.feat_config.feature_dim = 80;
   asr_cfg.model_config.transducer.encoder = asr_encoder.c_str();
@@ -95,7 +91,6 @@ AudioPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
   }
   asr_stream_ = SherpaOnnxCreateOnlineStream(asr_);
 
-  // ROS interfaces
   wake_word_pub_ =
       create_publisher<std_msgs::msg::String>("/audio/wake_word", 10);
   asr_text_pub_ =

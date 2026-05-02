@@ -4,6 +4,11 @@
 #include <fstream>
 #include <sstream>
 
+namespace trigger_types {
+constexpr const char *kVoice = "voice";
+constexpr const char *kEmotion = "emotion";
+} // namespace trigger_types
+
 BrainNode::BrainNode(const rclcpp::NodeOptions &options)
     : rclcpp_lifecycle::LifecycleNode("brain", options) {}
 
@@ -116,7 +121,7 @@ void BrainNode::on_asr_text(const std_msgs::msg::String &msg) {
   if (state_ != State::LISTENING)
     return;
   RCLCPP_INFO(get_logger(), "ASR: %s", msg.data.c_str());
-  request_cloud("voice", msg.data);
+  request_cloud(trigger_types::kVoice, msg.data);
 }
 
 void BrainNode::on_emotion(const buddy_interfaces::msg::EmotionResult &msg) {
@@ -148,7 +153,7 @@ void BrainNode::on_emotion(const buddy_interfaces::msg::EmotionResult &msg) {
       last_proactive_trigger_ = now;
       tracking_negative_ = false;
       transition(State::EMOTION_TRIGGER);
-      request_cloud("emotion", "");
+      request_cloud(trigger_types::kEmotion, "");
     }
   } else {
     tracking_negative_ = false;
@@ -176,9 +181,7 @@ void BrainNode::on_cloud_chunk(const buddy_interfaces::msg::CloudChunk &msg) {
     flush_sentence_buffer(session_id_);
     if (!msg.chunk_text.empty()) {
       history_.push_back("assistant: " + msg.chunk_text);
-      while (static_cast<int>(history_.size()) > max_history_turns_ * 2) {
-        history_.pop_front();
-      }
+      trim_history();
     }
   }
 }
@@ -220,12 +223,10 @@ void BrainNode::request_cloud(const std::string &trigger_type,
 
   if (!user_text.empty()) {
     history_.push_back("user: " + user_text);
-    while (static_cast<int>(history_.size()) > max_history_turns_ * 2) {
-      history_.pop_front();
-    }
+    trim_history();
   }
 
-  if (voice_attach_image_ || trigger_type == "emotion") {
+  if (voice_attach_image_ || trigger_type == trigger_types::kEmotion) {
     if (capture_client_->service_is_ready()) {
       auto capture_req =
           std::make_shared<buddy_interfaces::srv::CaptureImage::Request>();
@@ -250,16 +251,22 @@ void BrainNode::flush_sentence_buffer(const std::string &session_id) {
   sentence_buffer_.clear();
 }
 
+void BrainNode::trim_history() {
+  while (static_cast<int>(history_.size()) > max_history_turns_ * 2) {
+    history_.pop_front();
+  }
+}
+
 std::vector<std::string> BrainNode::segment(const std::string &text) {
   sentence_buffer_ += text;
   std::vector<std::string> result;
   size_t last = 0;
-  const std::vector<std::string> delimiters = {"\xe3\x80\x82", // 。
-                                               "\xef\xbc\x81", // ！
-                                               "\xef\xbc\x9f", // ？
-                                               ".",
-                                               "!",
-                                               "?"};
+  static const std::vector<std::string> delimiters = {"\xe3\x80\x82", // 。
+                                                      "\xef\xbc\x81", // ！
+                                                      "\xef\xbc\x9f", // ？
+                                                      ".",
+                                                      "!",
+                                                      "?"};
 
   while (last < sentence_buffer_.size()) {
     size_t best = std::string::npos;

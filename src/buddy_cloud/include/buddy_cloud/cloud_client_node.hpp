@@ -4,6 +4,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
 
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -37,4 +38,7 @@ private:
   std::string endpoint_;
   int image_max_width_{512};
   int timeout_seconds_{30};
+
+  std::thread worker_thread_;
+  std::mutex request_mtx_;
 };

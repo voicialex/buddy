@@ -100,7 +100,7 @@ if(BUILD_TESTING)
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
            $<BUILD_INTERFACE:${ORT_INCLUDE_DIR}>)
   target_compile_features(test_onnx_emotion_model PUBLIC cxx_std_17)
-  ament_target_dependencies(test_onnx_emotion_model OpenCV)
+  ament_target_dependencies(test_onnx_emotion_model rclcpp OpenCV)
   target_link_libraries(test_onnx_emotion_model ${ORT_LIBRARY})
 endif()
 ament_package()

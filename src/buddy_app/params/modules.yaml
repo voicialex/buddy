@@ -1,6 +1,8 @@
 # Toggle modules on/off for development.
 # Set to false to skip loading a module at startup.
 # Missing entries default to true (enabled).
+# NOTE: This is a LOCAL DEV config — do not commit with modules disabled
+#       unless intentionally testing a subset of the pipeline.
 modules:
   audio: false
   vision: true

@@ -5,6 +5,50 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sstream>
 
+namespace trigger_types {
+constexpr const char *kVoice = "voice";
+constexpr const char *kEmotion = "emotion";
+} // namespace trigger_types
+
+static std::string json_escape(const std::string &s) {
+  std::string out;
+  out.reserve(s.size() * 2);
+  for (unsigned char c : s) {
+    switch (c) {
+    case '"':
+      out += "\\\"";
+      break;
+    case '\\':
+      out += "\\\\";
+      break;
+    case '\n':
+      out += "\\n";
+      break;
+    case '\r':
+      out += "\\r";
+      break;
+    case '\t':
+      out += "\\t";
+      break;
+    case '\b':
+      out += "\\b";
+      break;
+    case '\f':
+      out += "\\f";
+      break;
+    default:
+      if (c < 0x20) {
+        char buf[8];
+        std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+        out += buf;
+      } else {
+        out += static_cast<char>(c);
+      }
+    }
+  }
+  return out;
+}
+
 static size_t write_callback(char *ptr, size_t size, size_t nmemb,
                              void *userdata) {
   auto *response = static_cast<std::string *>(userdata);
@@ -18,7 +62,6 @@ CloudClientNode::CloudClientNode(const rclcpp::NodeOptions &options)
 CallbackReturn CloudClientNode::on_configure(const rclcpp_lifecycle::State &) {
   RCLCPP_INFO(get_logger(), "CloudClientNode: configuring");
 
-  declare_parameter("provider", "doubao");
   declare_parameter("doubao.api_key", "");
   declare_parameter("doubao.model", "doubao-1.5-pro");
   declare_parameter(
@@ -55,10 +98,16 @@ CallbackReturn CloudClientNode::on_activate(const rclcpp_lifecycle::State &) {
 }
 CallbackReturn CloudClientNode::on_deactivate(const rclcpp_lifecycle::State &) {
   RCLCPP_INFO(get_logger(), "CloudClientNode: deactivating");
+  if (worker_thread_.joinable()) {
+    worker_thread_.join();
+  }
   return CallbackReturn::SUCCESS;
 }
 CallbackReturn CloudClientNode::on_cleanup(const rclcpp_lifecycle::State &) {
   RCLCPP_INFO(get_logger(), "CloudClientNode: cleaning up");
+  if (worker_thread_.joinable()) {
+    worker_thread_.join();
+  }
   cloud_response_pub_.reset();
   cloud_request_sub_.reset();
   curl_global_cleanup();
@@ -77,15 +126,18 @@ void CloudClientNode::on_cloud_request(
     const buddy_interfaces::msg::CloudRequest &msg) {
   RCLCPP_INFO(get_logger(), "Cloud request [%s]: %s", msg.trigger_type.c_str(),
               msg.user_text.c_str());
-  std::thread([this, msg]() { call_doubao(msg); }).detach();
+  std::lock_guard<std::mutex> lock(request_mtx_);
+  if (worker_thread_.joinable()) {
+    RCLCPP_WARN(get_logger(), "Previous request still in progress, waiting");
+    worker_thread_.join();
+  }
+  worker_thread_ = std::thread([this, msg]() { call_doubao(msg); });
 }
 
 std::string
 CloudClientNode::encode_image_base64(const sensor_msgs::msg::Image &image,
                                      int max_width) {
-  cv::Mat mat(image.height, image.width,
-              image.encoding == "rgb8" ? CV_8UC3 : CV_8UC3,
-              (void *)image.data.data());
+  cv::Mat mat(image.height, image.width, CV_8UC3, (void *)image.data.data());
   if (image.encoding == "rgb8") {
     cv::cvtColor(mat, mat, cv::COLOR_RGB2BGR);
   }
@@ -132,8 +184,8 @@ void CloudClientNode::call_doubao(
   messages << "[";
 
   if (!msg.system_prompt.empty()) {
-    messages << R"({\"role\":\"system\",\"content\":\"")" << msg.system_prompt
-             << R"(\"},)";
+    messages << R"({"role":"system","content":")"
+             << json_escape(msg.system_prompt) << R"("},)";
   }
 
   for (auto &h : msg.dialog_history) {
@@ -141,15 +193,15 @@ void CloudClientNode::call_doubao(
     if (colon != std::string::npos) {
       auto role = h.substr(0, colon);
       auto content = h.substr(colon + 2);
-      messages << R"({\"role\":\"")" << role << R"(\",\"content\":\"")"
-               << content << R"(\"},)";
+      messages << R"({"role":")" << json_escape(role) << R"(","content":")"
+               << json_escape(content) << R"("},)";
     }
   }
 
-  messages << R"({\"role\":\"user\",\"content\":[)";
+  messages << R"({"role":"user","content":[)";
 
   std::string text_content = msg.user_text;
-  if (text_content.empty() && msg.trigger_type == "emotion") {
+  if (text_content.empty() && msg.trigger_type == trigger_types::kEmotion) {
     text_content =
         "I notice you seem " + msg.emotion + ". How are you feeling?";
   }
@@ -158,20 +210,23 @@ void CloudClientNode::call_doubao(
         " [emotion: " + msg.emotion + " " +
         std::to_string(static_cast<int>(msg.emotion_confidence * 100)) + "%]";
   }
-  messages << R"({\"type\":\"text\",\"text\":\"")" << text_content << R"(\"})";
+  messages << R"({"type":"text","text":")" << json_escape(text_content)
+           << R"("})";
 
   if (!msg.image.data.empty()) {
     auto b64 = encode_image_base64(msg.image, image_max_width_);
     messages
-        << R"(,{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,)"
-        << b64 << R"(\"}})";
+        << R"(,{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,)"
+        << b64 << R"("}})";
   }
 
   messages << "]}]";
 
   std::ostringstream body;
-  body << R"({\"model\":\"")" << model_ << R"(\",\"messages\":)"
-       << messages.str() << "}";
+  body << R"({"model":")" << model_ << R"(","messages":)" << messages.str()
+       << "}";
+
+  std::string body_str = body.str();
 
   CURL *curl = curl_easy_init();
   if (!curl) {
@@ -187,7 +242,7 @@ void CloudClientNode::call_doubao(
 
   curl_easy_setopt(curl, CURLOPT_URL, endpoint_.c_str());
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.str().c_str());
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body_str.c_str());
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
   curl_easy_setopt(curl, CURLOPT_TIMEOUT, static_cast<long>(timeout_seconds_));
@@ -207,10 +262,10 @@ void CloudClientNode::call_doubao(
     return;
   }
 
-  auto content_key = R"(\"content\":\")";
+  auto content_key = std::string(R"("content":")");
   auto pos = response.rfind(content_key);
   if (pos != std::string::npos) {
-    pos += std::strlen(content_key);
+    pos += content_key.size();
     auto end = response.find('"', pos);
     chunk.chunk_text = response.substr(pos, end - pos);
   } else {

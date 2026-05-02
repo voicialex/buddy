@@ -21,7 +21,7 @@ class MockModel : public ModelInterface {
 public:
   bool load(const std::string & /*model_path*/) override { return true; }
   ModelResult inference(const cv::Mat & /*frame*/) override {
-    return {"neutral", 0.95f};
+    return {"neutral", 0.95f, {}};
   }
   void unload() override {}
 };

@@ -1,6 +1,5 @@
 cloud:
   ros__parameters:
-    provider: "doubao"
     doubao:
       api_key: ""
       model: "doubao-1.5-pro"

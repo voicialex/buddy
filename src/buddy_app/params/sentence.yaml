@@ -1,4 +1,0 @@
-sentence:
-  ros__parameters:
-    max_sentence_length: 200
-    delimiter_chars: ".!?。！？"

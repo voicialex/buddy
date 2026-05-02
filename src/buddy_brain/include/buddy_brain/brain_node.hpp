@@ -46,6 +46,7 @@ private:
   void request_cloud(const std::string &trigger_type,
                      const std::string &user_text);
   void flush_sentence_buffer(const std::string &session_id);
+  void trim_history();
 
   State state_{State::IDLE};
   std::string session_id_;

@@ -2,6 +2,7 @@
 #include "buddy_vision/onnx_emotion_model.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <cmath>
 #include <fstream>
 #include <set>
 
@@ -58,23 +59,26 @@ VisionPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
       continue;
     }
 
-    auto model = std::make_unique<EmotionOnnxModel>();
+    auto model = std::make_unique<EmotionOnnxModel>(get_logger());
     workers_[name] = std::make_unique<CameraWorker>(cfg, get_logger(),
                                                     std::move(model), preview);
 
     workers_[name]->set_result_callback(
-        [this, pub = result_pubs_[name], n = name, last_label = std::string{}](
-            const std::string &label, float confidence) mutable {
-          if (label != last_label) {
+        [this, pub = result_pubs_[name], n = name, last_label = std::string{},
+         last_confidence = 0.0f](const std::string &label,
+                                 float confidence) mutable {
+          if (label != last_label ||
+              std::abs(confidence - last_confidence) > 0.05f) {
             RCLCPP_INFO(get_logger(), "[%s] %s (%.2f)", n.c_str(),
                         label.c_str(), confidence);
             last_label = label;
+            last_confidence = confidence;
+            auto msg = buddy_interfaces::msg::EmotionResult();
+            msg.emotion = label;
+            msg.confidence = confidence;
+            msg.timestamp = now();
+            pub->publish(msg);
           }
-          auto msg = buddy_interfaces::msg::EmotionResult();
-          msg.emotion = label;
-          msg.confidence = confidence;
-          msg.timestamp = now();
-          pub->publish(msg);
         });
 
     RCLCPP_INFO(get_logger(), "Configured camera: [%s] → %s", name.c_str(),
