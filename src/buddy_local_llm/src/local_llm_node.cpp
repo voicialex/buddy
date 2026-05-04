@@ -79,8 +79,18 @@ void LocalLlmNode::on_inference_request(
 void LocalLlmNode::handle_request(
     const buddy_interfaces::msg::InferenceRequest &msg) {
   std::vector<ChatMessage> messages;
-  if (!system_prompt_.empty()) {
+  if (!msg.system_prompt.empty()) {
+    messages.push_back({"system", msg.system_prompt});
+  } else if (!system_prompt_.empty()) {
     messages.push_back({"system", system_prompt_});
+  }
+
+  for (auto &h : msg.dialog_history) {
+    // Format: "role: text" — split at first ": "
+    auto colon = h.find(": ");
+    if (colon != std::string::npos) {
+      messages.push_back({h.substr(0, colon), h.substr(colon + 2)});
+    }
   }
 
   std::string user_text = msg.user_text;
@@ -92,7 +102,7 @@ void LocalLlmNode::handle_request(
   bool ok = client_->chat_streaming(
       messages, [this](const std::string &chunk, bool done) {
         auto msg = buddy_interfaces::msg::InferenceChunk();
-        msg.session_id = "local";
+        msg.session_id = "";
         msg.chunk_text = chunk;
         msg.is_final = done;
         local_chunk_pub_->publish(msg);
@@ -100,7 +110,7 @@ void LocalLlmNode::handle_request(
 
   if (!ok) {
     auto err = buddy_interfaces::msg::InferenceChunk();
-    err.session_id = "local";
+    err.session_id = "";
     err.chunk_text = "";
     err.is_final = true;
     local_chunk_pub_->publish(err);

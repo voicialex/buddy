@@ -63,20 +63,28 @@ static size_t stream_callback(char *ptr, size_t size, size_t nmemb,
     auto cp = line.find(content_key);
     if (cp != std::string::npos) {
       cp += content_key.size();
-      auto end = line.find('"', cp);
-      if (end != std::string::npos) {
-        auto text = line.substr(cp, end - cp);
-        std::string unescaped;
-        for (size_t i = 0; i < text.size(); ++i) {
-          if (text[i] == '\\' && i + 1 < text.size() && text[i + 1] == 'n') {
-            unescaped += '\n';
-            ++i;
-          } else {
-            unescaped += text[i];
+      // Scan for closing quote, skipping escaped characters
+      std::string text;
+      while (cp < line.size()) {
+        if (line[cp] == '\\' && cp + 1 < line.size()) {
+          // Escaped character
+          switch (line[cp + 1]) {
+          case '"':  text += '"';  break;
+          case '\\': text += '\\'; break;
+          case 'n':  text += '\n'; break;
+          case 'r':  text += '\r'; break;
+          case 't':  text += '\t'; break;
+          default:   text += line[cp + 1]; break;
           }
+          cp += 2;
+        } else if (line[cp] == '"') {
+          break; // closing quote
+        } else {
+          text += line[cp];
+          ++cp;
         }
-        ctx->callback(unescaped, false);
       }
+      ctx->callback(text, false);
     }
 
     auto done_key = std::string(R"("done":true)");
