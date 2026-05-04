@@ -1,0 +1,1 @@
+{"nodes": [{"id": "cmake_app_buddy_main", "label": "buddy_main Executable", "file_type": "code", "source_file": "src/buddy_app/CMakeLists.txt", "source_location": 16, "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}

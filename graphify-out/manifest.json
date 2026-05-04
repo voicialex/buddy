@@ -1,0 +1,202 @@
+{
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_vision/include/buddy_vision/onnx_emotion_model.hpp": {
+    "mtime": 1777732551.9767005,
+    "hash": "d91a6dad194142791106372d48cf54ed"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_vision/include/buddy_vision/camera_worker.hpp": {
+    "mtime": 1777726837.1344795,
+    "hash": "d5d37a333f7fb5892e68ada59fc6a2af"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_vision/include/buddy_vision/frame_buffer.hpp": {
+    "mtime": 1777726837.1345334,
+    "hash": "6a36474a7eb688f8c9119820cbb70bba"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_vision/include/buddy_vision/model_interface.hpp": {
+    "mtime": 1777735644.4585304,
+    "hash": "7c964ea6efbfb21b97d20a32bbb9e746"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_vision/include/buddy_vision/vision_pipeline_node.hpp": {
+    "mtime": 1777726837.1345334,
+    "hash": "cc8c800a2bea052d45307146fdef9ccb"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_vision/src/vision_pipeline_node.cpp": {
+    "mtime": 1777736412.7468565,
+    "hash": "29e6d7e9af5c4180f75c8649120f5c03"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_vision/src/onnx_emotion_model.cpp": {
+    "mtime": 1777735644.5485334,
+    "hash": "3ebd754d9ac2487dc17073224cff111c"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_vision/test/test_model_interface.cpp": {
+    "mtime": 1777726837.1349595,
+    "hash": "c7519b13cd06aa1114c6b0ff87a16e88"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_vision/test/test_onnx_emotion_model.cpp": {
+    "mtime": 1777732711.7185867,
+    "hash": "6cb6fa49d9f70001e447fbdf50076baa"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_vision/test/test_vision_node.cpp": {
+    "mtime": 1777726837.1349595,
+    "hash": "8ac9cd5ae55f6253deee35528af697bf"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_vision/test/test_frame_buffer.cpp": {
+    "mtime": 1777726837.134897,
+    "hash": "ff66802e7e193dca4e239014cee33efb"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_app/src/buddy_main.cpp": {
+    "mtime": 1777739988.4743717,
+    "hash": "3f84d3b0a04f6fd50d44815a79347e4e"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_cloud/include/buddy_cloud/cloud_client_node.hpp": {
+    "mtime": 1777740172.4675784,
+    "hash": "7e7dc19640f373a480ad979990a701f2"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_cloud/src/cloud_client_node.cpp": {
+    "mtime": 1777739414.4550436,
+    "hash": "53c33b5c80ec5979bfc6b72f45b5643d"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_cloud/test/test_cloud_node.cpp": {
+    "mtime": 1777726837.1342049,
+    "hash": "fb4e10be770b12bd88470580aa0a13a8"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/include/buddy_audio/audio_pipeline_node.hpp": {
+    "mtime": 1777726837.1338828,
+    "hash": "183e1b3a54cd90114f8885b400a0c3a7"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/src/audio_pipeline_node.cpp": {
+    "mtime": 1777732534.6540425,
+    "hash": "4900c32259bc7b84e2c3024e58698343"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/test/test_audio_node.cpp": {
+    "mtime": 1777726837.1338828,
+    "hash": "30d1da4d6be9bb812e60ab6049fa0b3d"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_local_llm/include/buddy_local_llm/ollama_client.hpp": {
+    "mtime": 1777739679.7964714,
+    "hash": "8f0f37ed7ed66ffd509abab57e85bb03"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_local_llm/include/buddy_local_llm/local_llm_node.hpp": {
+    "mtime": 1777740214.7588613,
+    "hash": "d6abdaeaee8adf3b9aa382bcd46dc2ac"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_local_llm/src/ollama_client.cpp": {
+    "mtime": 1777906538.0977447,
+    "hash": "2a7ca5baf17efd62af04900c7cf12aa5"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_local_llm/src/local_llm_node.cpp": {
+    "mtime": 1777906588.7151256,
+    "hash": "660d168e7f50c564fec37507994743fc"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_local_llm/test/test_local_llm_node.cpp": {
+    "mtime": 1777739679.8344717,
+    "hash": "8afe80d7cf717ab5f7bee3e48e2ba949"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_brain/include/buddy_brain/brain_node.hpp": {
+    "mtime": 1777740214.8288617,
+    "hash": "7f9b2536aaad83b929a90abda35758f7"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_brain/src/brain_node.cpp": {
+    "mtime": 1777740214.8498619,
+    "hash": "c144cb59b431ad94d916a862fbd1bbb3"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_brain/test/test_segment.cpp": {
+    "mtime": 1777726837.1341624,
+    "hash": "f137ec008903c32c778e37ef85a005ee"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_brain/test/test_brain_node.cpp": {
+    "mtime": 1777726837.1340468,
+    "hash": "e83ac265bcd2deefdd2626d5749b68e2"
+  },
+  "/home/seb/buddy_ws/buddy_robot/AGENTS.md": {
+    "mtime": 1777726837.1325655,
+    "hash": "b744ae1951a2d7f4a58fc9858c865527"
+  },
+  "/home/seb/buddy_ws/buddy_robot/README.md": {
+    "mtime": 1777726837.1325655,
+    "hash": "6d83916496557180c18bc5ef6c6225d0"
+  },
+  "/home/seb/buddy_ws/buddy_robot/CLAUDE.md": {
+    "mtime": 1777726837.1325655,
+    "hash": "0ac5245fc403450f1073e636a7175219"
+  },
+  "/home/seb/buddy_ws/buddy_robot/docs/vision_architecture.md": {
+    "mtime": 1777726837.1325655,
+    "hash": "3ba8e9864598c56c34dacaf398e85013"
+  },
+  "/home/seb/buddy_ws/buddy_robot/docs/plan.md": {
+    "mtime": 1777740154.7734606,
+    "hash": "daa9f7cbd19dbcab18d7cc634a415af6"
+  },
+  "/home/seb/buddy_ws/buddy_robot/docs/architecture.md": {
+    "mtime": 1777740107.9721506,
+    "hash": "e91faf5bdac7281c6684de7088611f7a"
+  },
+  "/home/seb/buddy_ws/buddy_robot/docs/task.md": {
+    "mtime": 1777726837.1325655,
+    "hash": "5f1234e2c5f76d469af0ac69e85ccbf3"
+  },
+  "/home/seb/buddy_ws/buddy_robot/docs/communication_protocol.md": {
+    "mtime": 1777740119.1432245,
+    "hash": "eafde3db5605c38bad4853d76cd4443a"
+  },
+  "/home/seb/buddy_ws/buddy_robot/docs/models.md": {
+    "mtime": 1777726837.1325655,
+    "hash": "9b11da75fe6ec0100d9ff40bbb85f6e7"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_vision/CMakeLists.txt": {
+    "mtime": 1777732729.2932167,
+    "hash": "de095155f7c46dc552d074bdf94b1715"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_app/CMakeLists.txt": {
+    "mtime": 1777726837.132998,
+    "hash": "4d66cd78ec17f8118329c46d8e2c1121"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_app/params/modules.yaml": {
+    "mtime": 1777739993.2854025,
+    "hash": "9d76c84b79293cc6dfd52b0ae8f932a2"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_app/params/audio.yaml": {
+    "mtime": 1777726837.132998,
+    "hash": "8488a2189a788e2fe50e162f3b03d2b7"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_app/params/cloud.yaml": {
+    "mtime": 1777732639.3889592,
+    "hash": "d58cad24dae34c22810bb3e7dd3f69dc"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_app/params/local_llm.yaml": {
+    "mtime": 1777906565.1665778,
+    "hash": "65db5d67a6a2d9a6c121268687a584ed"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_app/params/vision.yaml": {
+    "mtime": 1777728231.8050086,
+    "hash": "6a3c34602e0944871e62098c5a99584e"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_app/params/brain.yaml": {
+    "mtime": 1777726837.1337204,
+    "hash": "48d576e1508db844973755e57803d729"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_cloud/CMakeLists.txt": {
+    "mtime": 1777726837.1341624,
+    "hash": "1f8185b4e40187271d89d1c7a636c105"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/CMakeLists.txt": {
+    "mtime": 1777726837.1337204,
+    "hash": "4722b5e8cf4a295527d51d950f2645cf"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_interfaces/CMakeLists.txt": {
+    "mtime": 1777739261.1303558,
+    "hash": "482b1ba5b2ca74a2034a4f4a8896dddc"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_local_llm/CMakeLists.txt": {
+    "mtime": 1777740260.495169,
+    "hash": "0ec40f357002aebc95c9352d686aebed"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_brain/CMakeLists.txt": {
+    "mtime": 1777726837.1338828,
+    "hash": "cbf8ba024fbeb71103801a39717d6461"
+  },
+  "/home/seb/buddy_ws/buddy_robot/graphify-out/memory/query_20260504_120256_how_does_the_dual_brain_architecture_route_inferen.md": {
+    "mtime": 1777896176.3073108,
+    "hash": "7e0b0cdaa9f8db6df4dd360f7871c0d9"
+  }
+}

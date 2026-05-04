@@ -1,0 +1,1 @@
+{"nodes": [], "edges": [{"source": "onnx_emotion_model_emotiononnxmodel", "target": "model_interface_modelresult", "relation": "shares_data_with", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "src/buddy_vision/src/onnx_emotion_model.cpp", "source_location": 45, "weight": 1.0}], "hyperedges": []}
