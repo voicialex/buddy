@@ -101,6 +101,8 @@ void LocalLlmNode::handle_request(
 
   bool ok = client_->chat_streaming(
       messages, [this](const std::string &chunk, bool done) {
+        if (chunk.empty() && !done)
+          return;
         auto msg = buddy_interfaces::msg::InferenceChunk();
         msg.session_id = "";
         msg.chunk_text = chunk;

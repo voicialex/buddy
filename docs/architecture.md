@@ -45,7 +45,6 @@ Audio → Brain → Vision (optional) → Local LLM + Cloud → Brain → Audio 
 
 ## 4. 依赖策略
 
-1. 本仓库不再使用 Conan。
 2. ROS2 基础依赖来自预编译 tarball，解压到 `prebuilt/` 后由 `build.sh` 自动 source。
 3. 第三方模型文件（`.onnx`、`.rknn`）不纳入版本库。
 4. 本地 LLM 推理依赖外部 ollama 服务（默认 `localhost:11434`）。

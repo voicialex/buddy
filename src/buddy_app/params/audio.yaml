@@ -1,6 +1,11 @@
 audio:
   ros__parameters:
-    device: "default"
+    # USB mic — plug in, then run `arecord -L` to find the device name.
+    # Example: "plughw:CARD=USBMIC,DEV=0"
+    mic_device: "default"
+    # USB speaker — plug in, then run `aplay -L` to find the device name.
+    # Example: "plughw:CARD=Speaker,DEV=0"
+    speaker_device: "default"
     sample_rate: 16000
     kws:
       encoder: "prebuilt/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"

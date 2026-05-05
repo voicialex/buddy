@@ -10,7 +10,8 @@ AudioPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
   RCLCPP_INFO(get_logger(), "AudioPipelineNode: configuring");
 
   // Parameters
-  declare_parameter("device", "default");
+  declare_parameter("mic_device", "default");
+  declare_parameter("speaker_device", "default");
   declare_parameter("sample_rate", 16000);
   declare_parameter("kws.encoder", "");
   declare_parameter("kws.decoder", "");
@@ -25,8 +26,11 @@ AudioPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
   declare_parameter("asr.tokens", "");
   declare_parameter("asr.decoding_method", "greedy_search");
 
-  device_ = get_parameter("device").as_string();
+  mic_device_ = get_parameter("mic_device").as_string();
+  speaker_device_ = get_parameter("speaker_device").as_string();
   sample_rate_ = get_parameter("sample_rate").as_int();
+  RCLCPP_INFO(get_logger(), "Audio devices: mic=%s, speaker=%s",
+              mic_device_.c_str(), speaker_device_.c_str());
 
   auto kws_encoder = get_parameter("kws.encoder").as_string();
   auto kws_decoder = get_parameter("kws.decoder").as_string();
@@ -107,7 +111,7 @@ AudioPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
 CallbackReturn AudioPipelineNode::on_activate(const rclcpp_lifecycle::State &) {
   RCLCPP_INFO(get_logger(), "AudioPipelineNode: activating");
 
-  int rc = snd_pcm_open(&pcm_, device_.c_str(), SND_PCM_STREAM_CAPTURE, 0);
+  int rc = snd_pcm_open(&pcm_, mic_device_.c_str(), SND_PCM_STREAM_CAPTURE, 0);
   if (rc < 0) {
     RCLCPP_ERROR(get_logger(), "ALSA open failed: %s", snd_strerror(rc));
     return CallbackReturn::FAILURE;
@@ -216,6 +220,10 @@ AudioPipelineNode::on_deactivate(const rclcpp_lifecycle::State &) {
   if (pcm_) {
     snd_pcm_close(pcm_);
     pcm_ = nullptr;
+  }
+  if (pcm_playback_) {
+    snd_pcm_close(pcm_playback_);
+    pcm_playback_ = nullptr;
   }
   return CallbackReturn::SUCCESS;
 }

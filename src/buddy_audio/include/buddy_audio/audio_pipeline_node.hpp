@@ -40,6 +40,7 @@ private:
 
   // ALSA
   snd_pcm_t *pcm_ = nullptr;
+  snd_pcm_t *pcm_playback_ = nullptr;
 
   // Threading
   std::thread capture_thread_;
@@ -55,5 +56,6 @@ private:
 
   // Config
   int sample_rate_ = 16000;
-  std::string device_ = "default";
+  std::string mic_device_ = "default";
+  std::string speaker_device_ = "default";
 };

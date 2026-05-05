@@ -52,6 +52,8 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State &) {
           "/brain/request", 10);
   sentence_pub_ =
       create_publisher<buddy_interfaces::msg::Sentence>("/brain/sentence", 10);
+  response_pub_ =
+      create_publisher<std_msgs::msg::String>("/brain/response", 10);
 
   wake_word_sub_ = create_subscription<std_msgs::msg::String>(
       "/audio/wake_word", 10,
@@ -92,6 +94,7 @@ CallbackReturn BrainNode::on_cleanup(const rclcpp_lifecycle::State &) {
   RCLCPP_INFO(get_logger(), "BrainNode: cleaning up");
   inference_request_pub_.reset();
   sentence_pub_.reset();
+  response_pub_.reset();
   wake_word_sub_.reset();
   asr_text_sub_.reset();
   emotion_sub_.reset();
@@ -171,8 +174,11 @@ void BrainNode::on_local_chunk(
     return;
 
   if (!msg.chunk_text.empty()) {
+    response_text_ += msg.chunk_text;
     auto sentences = segment(msg.chunk_text);
     for (auto &s : sentences) {
+      RCLCPP_INFO(get_logger(), "Local sentence #%u: %s",
+                  sentence_index_, s.c_str());
       auto sentence_msg = buddy_interfaces::msg::Sentence();
       sentence_msg.session_id = session_id_;
       sentence_msg.text = s;
@@ -183,6 +189,10 @@ void BrainNode::on_local_chunk(
 
   if (msg.is_final) {
     flush_sentence_buffer(session_id_);
+    RCLCPP_INFO(get_logger(), "Local response: %s", response_text_.c_str());
+    auto resp = std_msgs::msg::String();
+    resp.data = response_text_;
+    response_pub_->publish(resp);
   }
 }
 
@@ -200,8 +210,11 @@ void BrainNode::on_cloud_chunk(
   }
 
   if (!msg.chunk_text.empty()) {
+    response_text_ += msg.chunk_text;
     auto sentences = segment(msg.chunk_text);
     for (auto &s : sentences) {
+      RCLCPP_INFO(get_logger(), "Cloud sentence #%u: %s",
+                  sentence_index_, s.c_str());
       auto sentence_msg = buddy_interfaces::msg::Sentence();
       sentence_msg.session_id = session_id_;
       sentence_msg.text = s;
@@ -212,6 +225,10 @@ void BrainNode::on_cloud_chunk(
 
   if (msg.is_final) {
     flush_sentence_buffer(session_id_);
+    RCLCPP_INFO(get_logger(), "Cloud response: %s", response_text_.c_str());
+    auto resp = std_msgs::msg::String();
+    resp.data = response_text_;
+    response_pub_->publish(resp);
     if (!msg.chunk_text.empty()) {
       history_.push_back("assistant: " + msg.chunk_text);
       trim_history();
@@ -244,6 +261,7 @@ void BrainNode::request_inference(const std::string &trigger_type,
   sentence_buffer_.clear();
   sentence_index_ = 0;
   first_cloud_chunk_ = true;
+  response_text_.clear();
 
   auto req = buddy_interfaces::msg::InferenceRequest();
   req.trigger_type = trigger_type;

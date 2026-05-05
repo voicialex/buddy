@@ -72,10 +72,12 @@ private:
   std::string sentence_buffer_;
   uint32_t sentence_index_{0};
   bool first_cloud_chunk_{true};
+  std::string response_text_;
 
   rclcpp::Publisher<buddy_interfaces::msg::InferenceRequest>::SharedPtr
       inference_request_pub_;
   rclcpp::Publisher<buddy_interfaces::msg::Sentence>::SharedPtr sentence_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr response_pub_;
 
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr wake_word_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr asr_text_sub_;

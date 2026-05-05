@@ -5,7 +5,7 @@
 #       unless intentionally testing a subset of the pipeline.
 modules:
   audio: false
-  vision: true
-  brain: false
+  vision: false
+  brain: true
   cloud: false
-  local_llm: false
+  local_llm: true
