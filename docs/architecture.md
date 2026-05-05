@@ -1,7 +1,7 @@
 # Buddy Robot 架构文档（ROS 2 组件化）
 
-版本: v6.0
-日期: 2026-05-03
+版本: v7.0
+日期: 2026-05-05
 状态: 当前有效
 
 ## 1. 架构结论
@@ -27,21 +27,40 @@
 
 启动后组件运行在同一个进程内（`buddy_main`），通过 class_loader 动态加载组件 .so，开启 intra-process 通信。
 
-主流程（双脑架构）：
+### 3.1 模块架构图
 
 ```
-Audio → Brain → Vision (optional) → Local LLM + Cloud → Brain → Audio playback
-                                                  ↑
-                                          双模型并行推理
-                                    本地先回复，云端替换
-```
+                              Topic 流向总览
+  ┌──────────┐  wake_word   ┌──────────┐  /brain/request  ┌───────────────┐
+  │          │  asr_text    │          │────────────────▶  │buddy_local_llm│
+  │          │────────────▶ │          │                   │   (ollama)    │
+  │          │              │  buddy   │◀─ local_chunk ─── │               │
+  │  buddy   │  sentence    │  brain   │                   └───────────────┘
+  │  _audio  │◀──────────── │          │  /brain/request   ┌───────────────┐
+  │          │              │          │────────────────▶  │ buddy_cloud   │
+  │          │  tts_done    │          │                   │ (Doubao API)  │
+  │          │────────────▶ │          │◀─ cloud_chunk ── │               │
+  └──────────┘              └────┬─────┘                   └───────────────┘
+                                 ▲
+                    emotion_result│  srv: capture_image
+                                 │
+                            ┌────┴─────┐
+                            │  buddy   │
+                            │ _vision  │
+                            └──────────┘
 
-1. buddy_audio — 唤醒词检测、ASR、TTS回放
-2. buddy_brain — 状态机、对话上下文、切句、双流合并
-3. buddy_vision — 图像采集与情感识别
-4. buddy_cloud — 豆包API多模态请求（云端大模型）
-5. buddy_local_llm — ollama本地推理（快速初始回复）
-6. buddy_brain — 本地回复先播，云端到了替换 → audio TTS
+  buddy_brain 是唯一中枢:
+    audio  ◀──▶  brain  ──▶  local_llm (chunk 回流到 brain)
+    vision ──▶   brain  ──▶  cloud     (chunk 回流到 brain)
+
+时序说明 (Dual-Brain):
+
+  1. audio KWS检测唤醒词  ──▶ brain LISTENING
+  2. audio ASR识别语音    ──▶ brain REQUESTING ──▶ local_llm + cloud 并行推理
+  3. local_llm 先返回      ──▶ brain 分句 ──▶ audio TTS播放 (低延迟)
+  4. cloud 到达后          ──▶ brain 替换local ──▶ audio 播放云端回复 (高质量)
+  5. audio tts_done        ──▶ brain IDLE
+```
 
 ## 4. 依赖策略
 

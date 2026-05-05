@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <deque>
+#include <future>
 #include <string>
 #include <vector>
 
@@ -42,6 +43,7 @@ private:
   void on_local_chunk(const buddy_interfaces::msg::InferenceChunk &msg);
   void on_cloud_chunk(const buddy_interfaces::msg::InferenceChunk &msg);
   void on_tts_done(const std_msgs::msg::Empty &msg);
+  void process_chunk(const buddy_interfaces::msg::InferenceChunk &msg);
 
   void transition(State new_state);
   void request_inference(const std::string &trigger_type,
@@ -91,4 +93,7 @@ private:
 
   rclcpp::Client<buddy_interfaces::srv::CaptureImage>::SharedPtr
       capture_client_;
+  std::shared_future<
+      buddy_interfaces::srv::CaptureImage::Response::SharedPtr>
+      capture_future_;
 };

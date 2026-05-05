@@ -5,6 +5,21 @@
 AudioPipelineNode::AudioPipelineNode(const rclcpp::NodeOptions &options)
     : rclcpp_lifecycle::LifecycleNode("audio", options) {}
 
+void AudioPipelineNode::setup_transducer_config(
+    SherpaOnnxOnlineTransducerModelConfig &transducer,
+    SherpaOnnxOnlineModelConfig &model_cfg, SherpaOnnxFeatureConfig &feat_cfg,
+    int sample_rate, const std::string &encoder, const std::string &decoder,
+    const std::string &joiner, const std::string &tokens) {
+  feat_cfg.sample_rate = sample_rate;
+  feat_cfg.feature_dim = 80;
+  transducer.encoder = encoder.c_str();
+  transducer.decoder = decoder.c_str();
+  transducer.joiner = joiner.c_str();
+  model_cfg.tokens = tokens.c_str();
+  model_cfg.provider = "cpu";
+  model_cfg.num_threads = 1;
+}
+
 CallbackReturn
 AudioPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
   RCLCPP_INFO(get_logger(), "AudioPipelineNode: configuring");
@@ -13,75 +28,72 @@ AudioPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
   declare_parameter("mic_device", "default");
   declare_parameter("speaker_device", "default");
   declare_parameter("sample_rate", 16000);
-  declare_parameter("kws.encoder", "");
-  declare_parameter("kws.decoder", "");
-  declare_parameter("kws.joiner", "");
-  declare_parameter("kws.tokens", "");
+  declare_parameter("kws.enable", true);
+  declare_parameter("kws.model.encoder", "");
+  declare_parameter("kws.model.decoder", "");
+  declare_parameter("kws.model.joiner", "");
+  declare_parameter("kws.model.tokens", "");
   declare_parameter("kws.keywords_file", "");
   declare_parameter("kws.threshold", 0.1f);
   declare_parameter("kws.score", 3.0f);
-  declare_parameter("asr.encoder", "");
-  declare_parameter("asr.decoder", "");
-  declare_parameter("asr.joiner", "");
-  declare_parameter("asr.tokens", "");
+  declare_parameter("asr.model.encoder", "");
+  declare_parameter("asr.model.decoder", "");
+  declare_parameter("asr.model.joiner", "");
+  declare_parameter("asr.model.tokens", "");
   declare_parameter("asr.decoding_method", "greedy_search");
 
   mic_device_ = get_parameter("mic_device").as_string();
   speaker_device_ = get_parameter("speaker_device").as_string();
   sample_rate_ = get_parameter("sample_rate").as_int();
-  RCLCPP_INFO(get_logger(), "Audio devices: mic=%s, speaker=%s",
-              mic_device_.c_str(), speaker_device_.c_str());
+  kws_enabled_ = get_parameter("kws.enable").as_bool();
+  RCLCPP_INFO(get_logger(), "Audio devices: mic=%s, speaker=%s, kws=%s",
+              mic_device_.c_str(), speaker_device_.c_str(),
+              kws_enabled_ ? "on" : "off");
 
-  auto kws_encoder = get_parameter("kws.encoder").as_string();
-  auto kws_decoder = get_parameter("kws.decoder").as_string();
-  auto kws_joiner = get_parameter("kws.joiner").as_string();
-  auto kws_tokens = get_parameter("kws.tokens").as_string();
-  auto kws_keywords = get_parameter("kws.keywords_file").as_string();
-  auto kws_threshold = get_parameter("kws.threshold").as_double();
-  auto kws_score = get_parameter("kws.score").as_double();
+  // --- KWS init (optional) ---
+  if (kws_enabled_) {
+    auto kws_encoder = get_parameter("kws.model.encoder").as_string();
+    auto kws_decoder = get_parameter("kws.model.decoder").as_string();
+    auto kws_joiner = get_parameter("kws.model.joiner").as_string();
+    auto kws_tokens = get_parameter("kws.model.tokens").as_string();
+    auto kws_keywords = get_parameter("kws.keywords_file").as_string();
+    auto kws_threshold = get_parameter("kws.threshold").as_double();
+    auto kws_score = get_parameter("kws.score").as_double();
 
-  auto asr_encoder = get_parameter("asr.encoder").as_string();
-  auto asr_decoder = get_parameter("asr.decoder").as_string();
-  auto asr_joiner = get_parameter("asr.joiner").as_string();
-  auto asr_tokens = get_parameter("asr.tokens").as_string();
-  auto asr_method = get_parameter("asr.decoding_method").as_string();
+    if (kws_encoder.empty()) {
+      RCLCPP_ERROR(get_logger(), "KWS model encoder path not set");
+      return CallbackReturn::FAILURE;
+    }
 
-  if (kws_encoder.empty()) {
-    RCLCPP_ERROR(get_logger(), "KWS encoder path not set");
-    return CallbackReturn::FAILURE;
+    SherpaOnnxKeywordSpotterConfig kws_cfg{};
+    setup_transducer_config(kws_cfg.model_config.transducer,
+                           kws_cfg.model_config, kws_cfg.feat_config,
+                           sample_rate_, kws_encoder, kws_decoder, kws_joiner,
+                           kws_tokens);
+    kws_cfg.keywords_file = kws_keywords.c_str();
+    kws_cfg.keywords_threshold = static_cast<float>(kws_threshold);
+    kws_cfg.keywords_score = static_cast<float>(kws_score);
+    kws_cfg.max_active_paths = 4;
+
+    kws_ = SherpaOnnxCreateKeywordSpotter(&kws_cfg);
+    if (!kws_) {
+      RCLCPP_ERROR(get_logger(), "Failed to create KWS");
+      return CallbackReturn::FAILURE;
+    }
+    kws_stream_ = SherpaOnnxCreateKeywordStream(kws_);
   }
-
-  SherpaOnnxKeywordSpotterConfig kws_cfg{};
-  kws_cfg.feat_config.sample_rate = sample_rate_;
-  kws_cfg.feat_config.feature_dim = 80;
-  kws_cfg.model_config.transducer.encoder = kws_encoder.c_str();
-  kws_cfg.model_config.transducer.decoder = kws_decoder.c_str();
-  kws_cfg.model_config.transducer.joiner = kws_joiner.c_str();
-  kws_cfg.model_config.tokens = kws_tokens.c_str();
-  kws_cfg.model_config.provider = "cpu";
-  kws_cfg.model_config.num_threads = 1;
-  kws_cfg.keywords_file = kws_keywords.c_str();
-  kws_cfg.keywords_threshold = static_cast<float>(kws_threshold);
-  kws_cfg.keywords_score = static_cast<float>(kws_score);
-  kws_cfg.max_active_paths = 4;
-
-  kws_ = SherpaOnnxCreateKeywordSpotter(&kws_cfg);
-  if (!kws_) {
-    RCLCPP_ERROR(get_logger(), "Failed to create KWS");
-    return CallbackReturn::FAILURE;
-  }
-  kws_stream_ = SherpaOnnxCreateKeywordStream(kws_);
 
   // --- ASR init ---
+  auto asr_encoder = get_parameter("asr.model.encoder").as_string();
+  auto asr_decoder = get_parameter("asr.model.decoder").as_string();
+  auto asr_joiner = get_parameter("asr.model.joiner").as_string();
+  auto asr_tokens = get_parameter("asr.model.tokens").as_string();
+  auto asr_method = get_parameter("asr.decoding_method").as_string();
+
   SherpaOnnxOnlineRecognizerConfig asr_cfg{};
-  asr_cfg.feat_config.sample_rate = sample_rate_;
-  asr_cfg.feat_config.feature_dim = 80;
-  asr_cfg.model_config.transducer.encoder = asr_encoder.c_str();
-  asr_cfg.model_config.transducer.decoder = asr_decoder.c_str();
-  asr_cfg.model_config.transducer.joiner = asr_joiner.c_str();
-  asr_cfg.model_config.tokens = asr_tokens.c_str();
-  asr_cfg.model_config.provider = "cpu";
-  asr_cfg.model_config.num_threads = 1;
+  setup_transducer_config(asr_cfg.model_config.transducer, asr_cfg.model_config,
+                          asr_cfg.feat_config, sample_rate_, asr_encoder,
+                          asr_decoder, asr_joiner, asr_tokens);
   asr_cfg.decoding_method = asr_method.c_str();
   asr_cfg.enable_endpoint = 1;
   asr_cfg.rule1_min_trailing_silence = 2.4f;
@@ -104,7 +116,8 @@ AudioPipelineNode::on_configure(const rclcpp_lifecycle::State &) {
       "/brain/sentence", 10,
       std::bind(&AudioPipelineNode::on_sentence, this, std::placeholders::_1));
 
-  RCLCPP_INFO(get_logger(), "AudioPipelineNode: configured (KWS + ASR ready)");
+  RCLCPP_INFO(get_logger(), "AudioPipelineNode: configured (KWS=%s, ASR ready)",
+              kws_enabled_ ? "on" : "off");
   return CallbackReturn::SUCCESS;
 }
 
@@ -136,10 +149,11 @@ CallbackReturn AudioPipelineNode::on_activate(const rclcpp_lifecycle::State &) {
   }
 
   running_ = true;
-  mode_ = Mode::KWS;
+  mode_ = kws_enabled_ ? Mode::KWS : Mode::ASR;
   capture_thread_ = std::thread(&AudioPipelineNode::capture_loop, this);
 
-  RCLCPP_INFO(get_logger(), "AudioPipelineNode: activated (capturing)");
+  RCLCPP_INFO(get_logger(), "AudioPipelineNode: activated (mode=%s)",
+              kws_enabled_ ? "KWS" : "ASR-only");
   return CallbackReturn::SUCCESS;
 }
 
@@ -204,7 +218,9 @@ void AudioPipelineNode::capture_loop() {
           SherpaOnnxDestroyOnlineRecognizerResult(r);
         }
         SherpaOnnxOnlineStreamReset(asr_, asr_stream_);
-        mode_ = Mode::KWS;
+        if (kws_enabled_) {
+          mode_ = Mode::KWS;
+        }
       }
     }
   }
@@ -220,10 +236,6 @@ AudioPipelineNode::on_deactivate(const rclcpp_lifecycle::State &) {
   if (pcm_) {
     snd_pcm_close(pcm_);
     pcm_ = nullptr;
-  }
-  if (pcm_playback_) {
-    snd_pcm_close(pcm_playback_);
-    pcm_playback_ = nullptr;
   }
   return CallbackReturn::SUCCESS;
 }
@@ -267,6 +279,9 @@ void AudioPipelineNode::on_sentence(
     const buddy_interfaces::msg::Sentence &msg) {
   RCLCPP_INFO(get_logger(), "TTS: playing sentence [%u]: %s", msg.index,
               msg.text.c_str());
+  // TODO: real TTS synthesis + playback should happen here, before signaling
+  // done. Currently this is a stub that immediately publishes tts_done so the
+  // brain state machine can advance.
   std_msgs::msg::Empty done;
   tts_done_pub_->publish(done);
 }

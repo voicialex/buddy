@@ -60,12 +60,12 @@
     "hash": "fb4e10be770b12bd88470580aa0a13a8"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/include/buddy_audio/audio_pipeline_node.hpp": {
-    "mtime": 1777726837.1338828,
-    "hash": "183e1b3a54cd90114f8885b400a0c3a7"
+    "mtime": 1777962993.013207,
+    "hash": "e6f760ff3b85883801a072d977f693c9"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/src/audio_pipeline_node.cpp": {
-    "mtime": 1777732534.6540425,
-    "hash": "4900c32259bc7b84e2c3024e58698343"
+    "mtime": 1777962980.4357126,
+    "hash": "4dee83c2f98b659f49407a3b613ecae9"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/test/test_audio_node.cpp": {
     "mtime": 1777726837.1338828,
@@ -84,20 +84,20 @@
     "hash": "2a7ca5baf17efd62af04900c7cf12aa5"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_local_llm/src/local_llm_node.cpp": {
-    "mtime": 1777906588.7151256,
-    "hash": "660d168e7f50c564fec37507994743fc"
+    "mtime": 1777914254.631318,
+    "hash": "c2c755633d73c270235e1261a1970b71"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_local_llm/test/test_local_llm_node.cpp": {
     "mtime": 1777739679.8344717,
     "hash": "8afe80d7cf717ab5f7bee3e48e2ba949"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_brain/include/buddy_brain/brain_node.hpp": {
-    "mtime": 1777740214.8288617,
-    "hash": "7f9b2536aaad83b929a90abda35758f7"
+    "mtime": 1777951683.3656676,
+    "hash": "6cbcadd7cd46cc5031fec357835bac3e"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_brain/src/brain_node.cpp": {
-    "mtime": 1777740214.8498619,
-    "hash": "c144cb59b431ad94d916a862fbd1bbb3"
+    "mtime": 1777963045.827258,
+    "hash": "04a2d7cd9d5195b14a5a010d70b07228"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_brain/test/test_segment.cpp": {
     "mtime": 1777726837.1341624,
@@ -119,17 +119,21 @@
     "mtime": 1777726837.1325655,
     "hash": "0ac5245fc403450f1073e636a7175219"
   },
+  "/home/seb/buddy_ws/buddy_robot/docs/testing_guide.md": {
+    "mtime": 1777951772.458038,
+    "hash": "b9862911e9a3cedaa8df23b70fa2d707"
+  },
   "/home/seb/buddy_ws/buddy_robot/docs/vision_architecture.md": {
     "mtime": 1777726837.1325655,
     "hash": "3ba8e9864598c56c34dacaf398e85013"
   },
   "/home/seb/buddy_ws/buddy_robot/docs/plan.md": {
-    "mtime": 1777740154.7734606,
-    "hash": "daa9f7cbd19dbcab18d7cc634a415af6"
+    "mtime": 1777949715.649233,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "/home/seb/buddy_ws/buddy_robot/docs/architecture.md": {
-    "mtime": 1777740107.9721506,
-    "hash": "e91faf5bdac7281c6684de7088611f7a"
+    "mtime": 1777951717.0976923,
+    "hash": "67c938847f98369d751193275da42694"
   },
   "/home/seb/buddy_ws/buddy_robot/docs/task.md": {
     "mtime": 1777726837.1325655,
@@ -152,12 +156,12 @@
     "hash": "4d66cd78ec17f8118329c46d8e2c1121"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_app/params/modules.yaml": {
-    "mtime": 1777739993.2854025,
-    "hash": "9d76c84b79293cc6dfd52b0ae8f932a2"
+    "mtime": 1777911948.2108853,
+    "hash": "37b3ba2c7a26a1cd2d28694f625d07e4"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_app/params/audio.yaml": {
-    "mtime": 1777726837.132998,
-    "hash": "8488a2189a788e2fe50e162f3b03d2b7"
+    "mtime": 1777962892.9302044,
+    "hash": "ba0b11268741ebe0a2e158c6992a4f01"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_app/params/cloud.yaml": {
     "mtime": 1777732639.3889592,

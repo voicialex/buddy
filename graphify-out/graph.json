@@ -737,7 +737,7 @@
       "label": "on_activate()",
       "file_type": "code",
       "source_file": "buddy_audio/src/audio_pipeline_node.cpp",
-      "source_location": "L107",
+      "source_location": "L118",
       "id": "src_audio_pipeline_node_on_activate",
       "community": 6,
       "norm_label": "on_activate()"
@@ -746,7 +746,7 @@
       "label": "capture_loop()",
       "file_type": "code",
       "source_file": "buddy_audio/src/audio_pipeline_node.cpp",
-      "source_location": "L142",
+      "source_location": "L154",
       "id": "src_audio_pipeline_node_capture_loop",
       "community": 6,
       "norm_label": "capture_loop()"
@@ -755,7 +755,7 @@
       "label": "on_deactivate()",
       "file_type": "code",
       "source_file": "buddy_audio/src/audio_pipeline_node.cpp",
-      "source_location": "L209",
+      "source_location": "L223",
       "id": "src_audio_pipeline_node_on_deactivate",
       "community": 6,
       "norm_label": "on_deactivate()"
@@ -764,7 +764,7 @@
       "label": "on_cleanup()",
       "file_type": "code",
       "source_file": "buddy_audio/src/audio_pipeline_node.cpp",
-      "source_location": "L223",
+      "source_location": "L241",
       "id": "src_audio_pipeline_node_on_cleanup",
       "community": 6,
       "norm_label": "on_cleanup()"
@@ -773,7 +773,7 @@
       "label": "on_shutdown()",
       "file_type": "code",
       "source_file": "buddy_audio/src/audio_pipeline_node.cpp",
-      "source_location": "L248",
+      "source_location": "L266",
       "id": "src_audio_pipeline_node_on_shutdown",
       "community": 6,
       "norm_label": "on_shutdown()"
@@ -782,7 +782,7 @@
       "label": "on_error()",
       "file_type": "code",
       "source_file": "buddy_audio/src/audio_pipeline_node.cpp",
-      "source_location": "L253",
+      "source_location": "L271",
       "id": "src_audio_pipeline_node_on_error",
       "community": 6,
       "norm_label": "on_error()"
@@ -791,7 +791,7 @@
       "label": "on_sentence()",
       "file_type": "code",
       "source_file": "buddy_audio/src/audio_pipeline_node.cpp",
-      "source_location": "L258",
+      "source_location": "L276",
       "id": "src_audio_pipeline_node_on_sentence",
       "community": 6,
       "norm_label": "on_sentence()"
@@ -1088,7 +1088,7 @@
       "label": "on_activate()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L81",
+      "source_location": "L83",
       "id": "src_brain_node_on_activate",
       "community": 2,
       "norm_label": "on_activate()"
@@ -1097,7 +1097,7 @@
       "label": "on_deactivate()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L86",
+      "source_location": "L88",
       "id": "src_brain_node_on_deactivate",
       "community": 2,
       "norm_label": "on_deactivate()"
@@ -1106,7 +1106,7 @@
       "label": "on_cleanup()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L91",
+      "source_location": "L93",
       "id": "src_brain_node_on_cleanup",
       "community": 2,
       "norm_label": "on_cleanup()"
@@ -1115,7 +1115,7 @@
       "label": "on_shutdown()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L108",
+      "source_location": "L111",
       "id": "src_brain_node_on_shutdown",
       "community": 2,
       "norm_label": "on_shutdown()"
@@ -1124,7 +1124,7 @@
       "label": "on_error()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L113",
+      "source_location": "L116",
       "id": "src_brain_node_on_error",
       "community": 2,
       "norm_label": "on_error()"
@@ -1133,7 +1133,7 @@
       "label": "on_wake_word()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L118",
+      "source_location": "L121",
       "id": "src_brain_node_on_wake_word",
       "community": 2,
       "norm_label": "on_wake_word()"
@@ -1142,7 +1142,7 @@
       "label": "on_asr_text()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L125",
+      "source_location": "L128",
       "id": "src_brain_node_on_asr_text",
       "community": 2,
       "norm_label": "on_asr_text()"
@@ -1151,7 +1151,7 @@
       "label": "on_emotion()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L132",
+      "source_location": "L137",
       "id": "src_brain_node_on_emotion",
       "community": 2,
       "norm_label": "on_emotion()"
@@ -1160,7 +1160,7 @@
       "label": "on_local_chunk()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L168",
+      "source_location": "L173",
       "id": "src_brain_node_on_local_chunk",
       "community": 2,
       "norm_label": "on_local_chunk()"
@@ -1169,7 +1169,7 @@
       "label": "on_cloud_chunk()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L189",
+      "source_location": "L201",
       "id": "src_brain_node_on_cloud_chunk",
       "community": 2,
       "norm_label": "on_cloud_chunk()"
@@ -1178,7 +1178,7 @@
       "label": "on_tts_done()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L223",
+      "source_location": "L242",
       "id": "src_brain_node_on_tts_done",
       "community": 2,
       "norm_label": "on_tts_done()"
@@ -1187,7 +1187,7 @@
       "label": "transition()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L230",
+      "source_location": "L249",
       "id": "src_brain_node_transition",
       "community": 2,
       "norm_label": "transition()"
@@ -1196,7 +1196,7 @@
       "label": "request_inference()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L238",
+      "source_location": "L257",
       "id": "src_brain_node_request_inference",
       "community": 2,
       "norm_label": "request_inference()"
@@ -1205,7 +1205,7 @@
       "label": "flush_sentence_buffer()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L278",
+      "source_location": "L298",
       "id": "src_brain_node_flush_sentence_buffer",
       "community": 2,
       "norm_label": "flush_sentence_buffer()"
@@ -1214,7 +1214,7 @@
       "label": "trim_history()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L289",
+      "source_location": "L309",
       "id": "src_brain_node_trim_history",
       "community": 2,
       "norm_label": "trim_history()"
@@ -1223,7 +1223,7 @@
       "label": "segment()",
       "file_type": "code",
       "source_file": "buddy_brain/src/brain_node.cpp",
-      "source_location": "L295",
+      "source_location": "L315",
       "id": "src_brain_node_segment",
       "community": 2,
       "norm_label": "segment()"
@@ -3810,6 +3810,17 @@
       "confidence_score": 1.0,
       "source": "src_brain_node_on_wake_word",
       "target": "src_brain_node_transition"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "buddy_brain/src/brain_node.cpp",
+      "source_location": "L130",
+      "weight": 1.0,
+      "source": "src_brain_node_on_asr_text",
+      "target": "src_brain_node_transition",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",

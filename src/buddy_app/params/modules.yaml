@@ -4,7 +4,7 @@
 # NOTE: This is a LOCAL DEV config — do not commit with modules disabled
 #       unless intentionally testing a subset of the pipeline.
 modules:
-  audio: false
+  audio: true
   vision: false
   brain: true
   cloud: false

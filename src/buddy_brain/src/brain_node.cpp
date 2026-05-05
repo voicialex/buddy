@@ -126,6 +126,8 @@ void BrainNode::on_wake_word(const std_msgs::msg::String &) {
 }
 
 void BrainNode::on_asr_text(const std_msgs::msg::String &msg) {
+  if (state_ == State::IDLE)
+    transition(State::LISTENING);
   if (state_ != State::LISTENING)
     return;
   RCLCPP_INFO(get_logger(), "ASR: %s", msg.data.c_str());
@@ -168,17 +170,12 @@ void BrainNode::on_emotion(const buddy_interfaces::msg::EmotionResult &msg) {
   }
 }
 
-void BrainNode::on_local_chunk(
+void BrainNode::process_chunk(
     const buddy_interfaces::msg::InferenceChunk &msg) {
-  if (state_ != State::REQUESTING)
-    return;
-
   if (!msg.chunk_text.empty()) {
     response_text_ += msg.chunk_text;
     auto sentences = segment(msg.chunk_text);
     for (auto &s : sentences) {
-      RCLCPP_INFO(get_logger(), "Local sentence #%u: %s",
-                  sentence_index_, s.c_str());
       auto sentence_msg = buddy_interfaces::msg::Sentence();
       sentence_msg.session_id = session_id_;
       sentence_msg.text = s;
@@ -189,48 +186,46 @@ void BrainNode::on_local_chunk(
 
   if (msg.is_final) {
     flush_sentence_buffer(session_id_);
-    RCLCPP_INFO(get_logger(), "Local response: %s", response_text_.c_str());
     auto resp = std_msgs::msg::String();
     resp.data = response_text_;
     response_pub_->publish(resp);
   }
 }
 
-void BrainNode::on_cloud_chunk(
+void BrainNode::on_local_chunk(
     const buddy_interfaces::msg::InferenceChunk &msg) {
   if (state_ != State::REQUESTING)
+    return;
+  process_chunk(msg);
+  if (msg.is_final) {
+    // Local is not authoritative; transition to SPEAKING so the cycle
+    // completes if cloud never arrives, but do NOT write history.
+    transition(State::SPEAKING);
+  }
+}
+
+void BrainNode::on_cloud_chunk(
+    const buddy_interfaces::msg::InferenceChunk &msg) {
+  // Accept cloud in any post-request state (REQUESTING, SPEAKING, or even
+  // IDLE when the TTS stub completes instantly before cloud arrives).
+  if (state_ == State::LISTENING || state_ == State::EMOTION_TRIGGER)
     return;
 
   if (first_cloud_chunk_) {
     first_cloud_chunk_ = false;
-    // TODO: interrupt local TTS playback (requires audio support)
+    response_text_.clear();
     sentence_buffer_.clear();
-    sentence_index_ = 0;
+    if (state_ != State::REQUESTING)
+      transition(State::REQUESTING);
     RCLCPP_INFO(get_logger(), "Cloud response arrived, replacing local");
   }
 
-  if (!msg.chunk_text.empty()) {
-    response_text_ += msg.chunk_text;
-    auto sentences = segment(msg.chunk_text);
-    for (auto &s : sentences) {
-      RCLCPP_INFO(get_logger(), "Cloud sentence #%u: %s",
-                  sentence_index_, s.c_str());
-      auto sentence_msg = buddy_interfaces::msg::Sentence();
-      sentence_msg.session_id = session_id_;
-      sentence_msg.text = s;
-      sentence_msg.index = sentence_index_++;
-      sentence_pub_->publish(sentence_msg);
-    }
-  }
+  process_chunk(msg);
 
   if (msg.is_final) {
-    flush_sentence_buffer(session_id_);
-    RCLCPP_INFO(get_logger(), "Cloud response: %s", response_text_.c_str());
-    auto resp = std_msgs::msg::String();
-    resp.data = response_text_;
-    response_pub_->publish(resp);
-    if (!msg.chunk_text.empty()) {
-      history_.push_back("assistant: " + msg.chunk_text);
+    // Cloud is the authoritative response source
+    if (!response_text_.empty()) {
+      history_.push_back("assistant: " + response_text_);
       trim_history();
     }
     transition(State::SPEAKING);
@@ -247,6 +242,8 @@ void BrainNode::on_tts_done(const std_msgs::msg::Empty &) {
 void BrainNode::transition(State new_state) {
   static const char *names[] = {"IDLE", "LISTENING", "EMOTION_TRIGGER",
                                 "REQUESTING", "SPEAKING"};
+  if (state_ == State::IDLE)
+    tracking_negative_ = false;
   RCLCPP_INFO(get_logger(), "State: %s -> %s", names[static_cast<int>(state_)],
               names[static_cast<int>(new_state)]);
   state_ = new_state;
@@ -283,8 +280,8 @@ void BrainNode::request_inference(const std::string &trigger_type,
     if (capture_client_->service_is_ready()) {
       auto capture_req =
           std::make_shared<buddy_interfaces::srv::CaptureImage::Request>();
-      auto future = capture_client_->async_send_request(capture_req);
-      auto shared = future.share();
+      capture_future_ =
+          capture_client_->async_send_request(capture_req).share();
       RCLCPP_DEBUG(get_logger(), "Image capture requested");
     }
   }

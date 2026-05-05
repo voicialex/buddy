@@ -1,11 +1,11 @@
-# Graph Report - buddy_robot  (2026-05-04)
+# Graph Report - buddy_robot  (2026-05-05)
 
 ## Corpus Check
-- 27 files · ~10,668 words
+- 27 files · ~10,145 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 236 nodes · 248 edges · 43 communities detected
+- 236 nodes · 249 edges · 43 communities detected
 - Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 32 edges (avg confidence: 0.9)
 - Token cost: 0 input · 0 output
 
@@ -61,7 +61,7 @@
 4. `local_llm_component Library` - 10 edges
 5. `audio_component Library` - 9 edges
 6. `buddy_main Executable` - 8 edges
-7. `transition()` - 6 edges
+7. `transition()` - 7 edges
 8. `on_cloud_chunk()` - 5 edges
 9. `request_inference()` - 5 edges
 10. `VisionPipelineNode` - 5 edges
@@ -97,7 +97,7 @@ Cohesion: 0.09
 Nodes (23): CaptureImage.srv Generation, EmotionResult.msg Generation, ONNX Runtime Prebuilt Dependency, test_frame_buffer, test_model_interface, test_onnx_emotion_model, test_vision_node, vision_component Library (+15 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.18
+Cohesion: 0.19
 Nodes (11): flush_sentence_buffer(), on_asr_text(), on_cloud_chunk(), on_emotion(), on_local_chunk(), on_tts_done(), on_wake_word(), request_inference() (+3 more)
 
 ### Community 3 - "Community 3"

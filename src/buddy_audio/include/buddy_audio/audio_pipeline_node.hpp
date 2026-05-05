@@ -32,6 +32,12 @@ private:
   void capture_loop();
   void on_sentence(const buddy_interfaces::msg::Sentence &msg);
 
+  static void setup_transducer_config(
+      SherpaOnnxOnlineTransducerModelConfig &transducer,
+      SherpaOnnxOnlineModelConfig &model_cfg, SherpaOnnxFeatureConfig &feat_cfg,
+      int sample_rate, const std::string &encoder, const std::string &decoder,
+      const std::string &joiner, const std::string &tokens);
+
   // Sherpa-ONNX handles
   const SherpaOnnxKeywordSpotter *kws_ = nullptr;
   const SherpaOnnxOnlineStream *kws_stream_ = nullptr;
@@ -40,7 +46,6 @@ private:
 
   // ALSA
   snd_pcm_t *pcm_ = nullptr;
-  snd_pcm_t *pcm_playback_ = nullptr;
 
   // Threading
   std::thread capture_thread_;
@@ -58,4 +63,5 @@ private:
   int sample_rate_ = 16000;
   std::string mic_device_ = "default";
   std::string speaker_device_ = "default";
+  bool kws_enabled_ = true;
 };

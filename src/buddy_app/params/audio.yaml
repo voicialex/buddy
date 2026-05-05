@@ -1,23 +1,26 @@
 audio:
   ros__parameters:
-    # USB mic — plug in, then run `arecord -L` to find the device name.
-    # Example: "plughw:CARD=USBMIC,DEV=0"
-    mic_device: "default"
-    # USB speaker — plug in, then run `aplay -L` to find the device name.
-    # Example: "plughw:CARD=Speaker,DEV=0"
-    speaker_device: "default"
+    # ALSA device naming: `plughw:CARD=<card_name>,DEV=0`
+    #   <card_name> comes from `arecord -l` / `aplay -l` output:
+    #     card 2: Device [USB PnP Sound Device]  →  CARD=Device
+    #   Use `plughw` (not `hw`) for automatic sample-rate conversion (16kHz).
+    mic_device: "plughw:CARD=Device,DEV=0"
+    speaker_device: "plughw:CARD=Device,DEV=0"
     sample_rate: 16000
     kws:
-      encoder: "prebuilt/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
-      decoder: "prebuilt/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/decoder-epoch-12-avg-2-chunk-16-left-64.onnx"
-      joiner: "prebuilt/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
-      tokens: "prebuilt/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/tokens.txt"
-      keywords_file: "prebuilt/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/test_wavs/test_keywords.txt"
+      enable: false
+      model:
+        encoder: "src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
+        decoder: "src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/decoder-epoch-12-avg-2-chunk-16-left-64.onnx"
+        joiner: "src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
+        tokens: "src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/tokens.txt"
+      keywords_file: "src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/test_wavs/test_keywords.txt"
       threshold: 0.1
       score: 3.0
     asr:
-      encoder: "prebuilt/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/encoder-epoch-99-avg-1.int8.onnx"
-      decoder: "prebuilt/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/decoder-epoch-99-avg-1.onnx"
-      joiner: "prebuilt/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/joiner-epoch-99-avg-1.int8.onnx"
-      tokens: "prebuilt/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/tokens.txt"
+      model:
+        encoder: "src/buddy_audio/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/encoder-epoch-99-avg-1.int8.onnx"
+        decoder: "src/buddy_audio/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/decoder-epoch-99-avg-1.onnx"
+        joiner: "src/buddy_audio/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/joiner-epoch-99-avg-1.int8.onnx"
+        tokens: "src/buddy_audio/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/tokens.txt"
       decoding_method: "greedy_search"

@@ -57,6 +57,7 @@ build() {
     build --symlink-install \
     --build-base "$OUTPUT_DIR/build" \
     --install-base "$OUTPUT_DIR/install" \
+    --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     "$@"
 }
 
