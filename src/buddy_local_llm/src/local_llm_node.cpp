@@ -57,6 +57,9 @@ CallbackReturn LocalLlmNode::on_cleanup(const rclcpp_lifecycle::State &) {
 }
 CallbackReturn LocalLlmNode::on_shutdown(const rclcpp_lifecycle::State &) {
   RCLCPP_INFO(get_logger(), "LocalLlmNode: shutting down");
+  if (worker_thread_.joinable()) {
+    worker_thread_.join();
+  }
   return CallbackReturn::SUCCESS;
 }
 CallbackReturn LocalLlmNode::on_error(const rclcpp_lifecycle::State &) {
@@ -78,6 +81,7 @@ void LocalLlmNode::on_inference_request(
 
 void LocalLlmNode::handle_request(
     const buddy_interfaces::msg::InferenceRequest &msg) {
+  const auto &turn_id = msg.turn_id;
   std::vector<ChatMessage> messages;
   if (!msg.system_prompt.empty()) {
     messages.push_back({"system", msg.system_prompt});
@@ -100,11 +104,11 @@ void LocalLlmNode::handle_request(
   messages.push_back({"user", user_text});
 
   bool ok = client_->chat_streaming(
-      messages, [this](const std::string &chunk, bool done) {
+      messages, [this, &turn_id](const std::string &chunk, bool done) {
         if (chunk.empty() && !done)
           return;
         auto msg = buddy_interfaces::msg::InferenceChunk();
-        msg.session_id = "";
+        msg.turn_id = turn_id;
         msg.chunk_text = chunk;
         msg.is_final = done;
         local_chunk_pub_->publish(msg);
@@ -112,7 +116,7 @@ void LocalLlmNode::handle_request(
 
   if (!ok) {
     auto err = buddy_interfaces::msg::InferenceChunk();
-    err.session_id = "";
+    err.turn_id = turn_id;
     err.chunk_text = "";
     err.is_final = true;
     local_chunk_pub_->publish(err);

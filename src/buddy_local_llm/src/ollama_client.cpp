@@ -23,6 +23,12 @@ static std::string json_escape(const std::string &s) {
     case '\t':
       out += "\\t";
       break;
+    case '\b':
+      out += "\\b";
+      break;
+    case '\f':
+      out += "\\f";
+      break;
     default:
       if (c < 0x20) {
         char buf[8];

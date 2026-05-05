@@ -1,5 +1,8 @@
 #pragma once
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <queue>
 #include <string>
 #include <thread>
 
@@ -31,6 +34,8 @@ private:
 
   void capture_loop();
   void on_sentence(const buddy_interfaces::msg::Sentence &msg);
+  void tts_loop();
+  void play_speech(const float *samples, int32_t n, int32_t sample_rate);
 
   static void setup_transducer_config(
       SherpaOnnxOnlineTransducerModelConfig &transducer,
@@ -38,16 +43,23 @@ private:
       int sample_rate, const std::string &encoder, const std::string &decoder,
       const std::string &joiner, const std::string &tokens);
 
-  // Sherpa-ONNX handles
-  const SherpaOnnxKeywordSpotter *kws_ = nullptr;
-  const SherpaOnnxOnlineStream *kws_stream_ = nullptr;
-  const SherpaOnnxOnlineRecognizer *asr_ = nullptr;
-  const SherpaOnnxOnlineStream *asr_stream_ = nullptr;
+  // Sherpa-ONNX handles (non-const: AcceptWaveform/Decode/etc modify internal state)
+  SherpaOnnxKeywordSpotter *kws_ = nullptr;
+  SherpaOnnxOnlineStream *kws_stream_ = nullptr;
+  SherpaOnnxOnlineRecognizer *asr_ = nullptr;
+  SherpaOnnxOnlineStream *asr_stream_ = nullptr;
+  SherpaOnnxOfflineTts *tts_ = nullptr;
 
-  // ALSA
+  // ALSA capture
   snd_pcm_t *pcm_ = nullptr;
 
-  // Threading
+  // TTS worker thread
+  std::thread tts_thread_;
+  std::mutex tts_queue_mtx_;
+  std::condition_variable tts_queue_cv_;
+  std::queue<buddy_interfaces::msg::Sentence> tts_queue_;
+
+  // Capture thread
   std::thread capture_thread_;
   std::atomic<bool> running_{false};
   std::atomic<Mode> mode_{Mode::KWS};
@@ -61,7 +73,10 @@ private:
 
   // Config
   int sample_rate_ = 16000;
+  int tts_sid_ = 0;
+  float tts_speed_ = 1.0f;
   std::string mic_device_ = "default";
   std::string speaker_device_ = "default";
   bool kws_enabled_ = true;
+  std::string current_turn_id_;
 };

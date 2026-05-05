@@ -24,3 +24,12 @@ audio:
         joiner: "src/buddy_audio/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/joiner-epoch-99-avg-1.int8.onnx"
         tokens: "src/buddy_audio/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/tokens.txt"
       decoding_method: "greedy_search"
+    # TTS — sherpa-onnx offline TTS (leave model empty to disable)
+    tts:
+      model: "src/buddy_audio/models/vits-icefall-zh-aishell3/model.onnx"
+      tokens: "src/buddy_audio/models/vits-icefall-zh-aishell3/tokens.txt"
+      lexicon: "src/buddy_audio/models/vits-icefall-zh-aishell3/lexicon.txt"
+      data_dir: ""
+      rule_fsts: "src/buddy_audio/models/vits-icefall-zh-aishell3/number.fst,src/buddy_audio/models/vits-icefall-zh-aishell3/phone.fst,src/buddy_audio/models/vits-icefall-zh-aishell3/date.fst"
+      sid: 0
+      speed: 1.0

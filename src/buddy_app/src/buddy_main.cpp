@@ -155,14 +155,34 @@ int main(int argc, char **argv) {
   }
 
   // Lifecycle: configure → activate
+  using CBReturn =
+      rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
   RCLCPP_INFO(logger, "Configuring %zu lifecycle nodes...",
               lifecycle_nodes.size());
   for (auto &node : lifecycle_nodes) {
-    node->configure();
+    CBReturn cb_rc = CBReturn::SUCCESS;
+    node->configure(cb_rc);
+    if (cb_rc == CBReturn::SUCCESS) {
+      RCLCPP_INFO(logger, "  %s: configured", node->get_name());
+    } else {
+      RCLCPP_ERROR(logger, "  %s: configure FAILED (%d)", node->get_name(),
+                   static_cast<int>(cb_rc));
+      rclcpp::shutdown();
+      return 1;
+    }
   }
   RCLCPP_INFO(logger, "Activating...");
   for (auto &node : lifecycle_nodes) {
-    node->activate();
+    CBReturn cb_rc = CBReturn::SUCCESS;
+    node->activate(cb_rc);
+    if (cb_rc == CBReturn::SUCCESS) {
+      RCLCPP_INFO(logger, "  %s: activated", node->get_name());
+    } else {
+      RCLCPP_ERROR(logger, "  %s: activate FAILED (%d)", node->get_name(),
+                   static_cast<int>(cb_rc));
+      rclcpp::shutdown();
+      return 1;
+    }
   }
 
   RCLCPP_INFO(logger, "All nodes active. Spinning...");

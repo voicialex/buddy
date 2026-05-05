@@ -60,12 +60,12 @@
     "hash": "fb4e10be770b12bd88470580aa0a13a8"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/include/buddy_audio/audio_pipeline_node.hpp": {
-    "mtime": 1777962993.013207,
-    "hash": "e6f760ff3b85883801a072d977f693c9"
+    "mtime": 1777965668.7488444,
+    "hash": "967eb812805504a018e11a5c2777c2ff"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/src/audio_pipeline_node.cpp": {
-    "mtime": 1777962980.4357126,
-    "hash": "4dee83c2f98b659f49407a3b613ecae9"
+    "mtime": 1777965697.7863953,
+    "hash": "47cdfae31ff4d2e1d2959e0ed85477c9"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/test/test_audio_node.cpp": {
     "mtime": 1777726837.1338828,
@@ -92,12 +92,12 @@
     "hash": "8afe80d7cf717ab5f7bee3e48e2ba949"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_brain/include/buddy_brain/brain_node.hpp": {
-    "mtime": 1777951683.3656676,
-    "hash": "6cbcadd7cd46cc5031fec357835bac3e"
+    "mtime": 1777978115.0625474,
+    "hash": "7b18f595cc33a555ab20876375a6ce69"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_brain/src/brain_node.cpp": {
-    "mtime": 1777963045.827258,
-    "hash": "04a2d7cd9d5195b14a5a010d70b07228"
+    "mtime": 1777966110.3091013,
+    "hash": "4564fe8a7cfb414c25b41108f8f3d0db"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_brain/test/test_segment.cpp": {
     "mtime": 1777726837.1341624,
@@ -127,25 +127,37 @@
     "mtime": 1777726837.1325655,
     "hash": "3ba8e9864598c56c34dacaf398e85013"
   },
+  "/home/seb/buddy_ws/buddy_robot/docs/test_mic_speaker_guide.md": {
+    "mtime": 1777986560.8894908,
+    "hash": "c14e71b462afeadf7ad63511bc060a64"
+  },
   "/home/seb/buddy_ws/buddy_robot/docs/plan.md": {
     "mtime": 1777949715.649233,
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "/home/seb/buddy_ws/buddy_robot/docs/architecture.md": {
-    "mtime": 1777951717.0976923,
-    "hash": "67c938847f98369d751193275da42694"
+    "mtime": 1777979573.0952091,
+    "hash": "9d88e93d4c2c7932bf201deafb5a32ff"
+  },
+  "/home/seb/buddy_ws/buddy_robot/docs/requirements.md": {
+    "mtime": 1777986680.5855918,
+    "hash": "7e33905f02dd8a4e58db908214de60b9"
   },
   "/home/seb/buddy_ws/buddy_robot/docs/task.md": {
     "mtime": 1777726837.1325655,
     "hash": "5f1234e2c5f76d469af0ac69e85ccbf3"
+  },
+  "/home/seb/buddy_ws/buddy_robot/docs/dependency.md": {
+    "mtime": 1777986478.596335,
+    "hash": "7e33905f02dd8a4e58db908214de60b9"
   },
   "/home/seb/buddy_ws/buddy_robot/docs/communication_protocol.md": {
     "mtime": 1777740119.1432245,
     "hash": "eafde3db5605c38bad4853d76cd4443a"
   },
   "/home/seb/buddy_ws/buddy_robot/docs/models.md": {
-    "mtime": 1777726837.1325655,
-    "hash": "9b11da75fe6ec0100d9ff40bbb85f6e7"
+    "mtime": 1777986478.5593357,
+    "hash": "8a77cdbb2d32ae62803411638f20610c"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_vision/CMakeLists.txt": {
     "mtime": 1777732729.2932167,
@@ -156,12 +168,12 @@
     "hash": "4d66cd78ec17f8118329c46d8e2c1121"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_app/params/modules.yaml": {
-    "mtime": 1777911948.2108853,
-    "hash": "37b3ba2c7a26a1cd2d28694f625d07e4"
+    "mtime": 1777986911.4809198,
+    "hash": "b1464b5c84483173cbf4d462caf8c47e"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_app/params/audio.yaml": {
-    "mtime": 1777962892.9302044,
-    "hash": "ba0b11268741ebe0a2e158c6992a4f01"
+    "mtime": 1777986808.0733943,
+    "hash": "f2cf38082e240ae238e70e3f3b0aaa03"
   },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_app/params/cloud.yaml": {
     "mtime": 1777732639.3889592,
@@ -187,6 +199,30 @@
     "mtime": 1777726837.1337204,
     "hash": "4722b5e8cf4a295527d51d950f2645cf"
   },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/README.md": {
+    "mtime": 1716868138.0,
+    "hash": "db383da71e0d86755b38a04f9270249b"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/keywords_raw.txt": {
+    "mtime": 1726063344.0,
+    "hash": "ea564bb4a082b0e592c704bae49a4398"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/notes.md": {
+    "mtime": 1726063344.0,
+    "hash": "3e2713c7e863581644262ab03a8cb005"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/keywords.txt": {
+    "mtime": 1726063344.0,
+    "hash": "04f32f05534ad9556abe334154591159"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/README.md": {
+    "mtime": 1726063344.0,
+    "hash": "4961e46bfba6b2e4099d8eeea97d9c28"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/test_wavs/test_keywords.txt": {
+    "mtime": 1710163000.0,
+    "hash": "4b9aef47cad93442b884cd7af091d114"
+  },
   "/home/seb/buddy_ws/buddy_robot/src/buddy_interfaces/CMakeLists.txt": {
     "mtime": 1777739261.1303558,
     "hash": "482b1ba5b2ca74a2034a4f4a8896dddc"
@@ -202,5 +238,53 @@
   "/home/seb/buddy_ws/buddy_robot/graphify-out/memory/query_20260504_120256_how_does_the_dual_brain_architecture_route_inferen.md": {
     "mtime": 1777896176.3073108,
     "hash": "7e0b0cdaa9f8db6df4dd360f7871c0d9"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/test_wavs/8k.wav": {
+    "mtime": 1716868138.0,
+    "hash": "e26e9e4d3e5d513063947b1a2c0dd408"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/test_wavs/0.wav": {
+    "mtime": 1716868138.0,
+    "hash": "74d1460361349f74e9153315efa856e2"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/test_wavs/2.wav": {
+    "mtime": 1716868138.0,
+    "hash": "31ec34cc2c8ae246ec8a3b7c8047125c"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/test_wavs/3.wav": {
+    "mtime": 1716868138.0,
+    "hash": "9ea9ebfc96befca595e1fd7b3dd7c4b3"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/test_wavs/1.wav": {
+    "mtime": 1716868138.0,
+    "hash": "1d105f2b9dab1a61e5c52b510b631aff"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/test_wavs/4.wav": {
+    "mtime": 1710163000.0,
+    "hash": "2679c836c6d62c4bb10573230fdfc19e"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/test_wavs/0.wav": {
+    "mtime": 1710163000.0,
+    "hash": "2265e986da0572484447c653b84b28bb"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/test_wavs/2.wav": {
+    "mtime": 1710163000.0,
+    "hash": "0eea4a127c6cf550479666f8aebc86ed"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/test_wavs/6.wav": {
+    "mtime": 1710163000.0,
+    "hash": "15e8bf81fcadd1a5b8c666e7baf09c97"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/test_wavs/3.wav": {
+    "mtime": 1710163000.0,
+    "hash": "528dc968243609b14600e9c3d8e00737"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/test_wavs/5.wav": {
+    "mtime": 1710163000.0,
+    "hash": "de9dd102c5662bcf3f51db23e87ac099"
+  },
+  "/home/seb/buddy_ws/buddy_robot/src/buddy_audio/models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile/test_wavs/1.wav": {
+    "mtime": 1710163000.0,
+    "hash": "020a015080d8d9d10cbb09caff43463a"
   }
 }

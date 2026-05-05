@@ -2,6 +2,7 @@ brain:
   ros__parameters:
     system_prompt_path: ""
     max_history_turns: 10
+    session_timeout_seconds: 60.0
     emotion_trigger:
       enabled: true
       negative_emotions: ["sad", "angry", "fear"]

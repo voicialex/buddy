@@ -1,4 +1,6 @@
 # InferenceRequest.msg — brain → inference backends
+string session_id
+string turn_id
 string trigger_type           # "voice" or "emotion"
 string user_text              # ASR text (voice trigger)
 string emotion                # current emotion label

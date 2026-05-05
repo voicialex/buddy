@@ -116,6 +116,9 @@ CallbackReturn CloudClientNode::on_cleanup(const rclcpp_lifecycle::State &) {
 }
 CallbackReturn CloudClientNode::on_shutdown(const rclcpp_lifecycle::State &) {
   RCLCPP_INFO(get_logger(), "CloudClientNode: shutting down");
+  if (worker_thread_.joinable()) {
+    worker_thread_.join();
+  }
   return CallbackReturn::SUCCESS;
 }
 CallbackReturn CloudClientNode::on_error(const rclcpp_lifecycle::State &) {
@@ -174,7 +177,8 @@ void CloudClientNode::call_doubao(
   if (api_key_.empty()) {
     RCLCPP_ERROR(get_logger(), "No API key configured for Doubao");
     auto chunk = buddy_interfaces::msg::InferenceChunk();
-    chunk.session_id = "error";
+    chunk.session_id = msg.session_id;
+    chunk.turn_id = msg.turn_id;
     chunk.chunk_text = "API key not configured.";
     chunk.is_final = true;
     cloud_chunk_pub_->publish(chunk);
@@ -253,7 +257,8 @@ void CloudClientNode::call_doubao(
   curl_easy_cleanup(curl);
 
   auto chunk = buddy_interfaces::msg::InferenceChunk();
-  chunk.session_id = "doubao";
+  chunk.session_id = msg.session_id;
+  chunk.turn_id = msg.turn_id;
 
   if (res != CURLE_OK) {
     RCLCPP_ERROR(get_logger(), "Doubao API error: %s", curl_easy_strerror(res));

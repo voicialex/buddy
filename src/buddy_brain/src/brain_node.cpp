@@ -24,8 +24,11 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State &) {
   declare_parameter("emotion_trigger.duration_seconds", 3.0);
   declare_parameter("emotion_trigger.cooldown_seconds", 60.0);
   declare_parameter("voice_trigger.attach_image", true);
+  declare_parameter("session_timeout_seconds", 60.0);
 
   max_history_turns_ = get_parameter("max_history_turns").as_int();
+  session_timeout_seconds_ =
+      get_parameter("session_timeout_seconds").as_double();
   emotion_trigger_enabled_ = get_parameter("emotion_trigger.enabled").as_bool();
   negative_emotions_ =
       get_parameter("emotion_trigger.negative_emotions").as_string_array();
@@ -119,18 +122,25 @@ CallbackReturn BrainNode::on_error(const rclcpp_lifecycle::State &) {
 }
 
 void BrainNode::on_wake_word(const std_msgs::msg::String &) {
-  if (state_ != State::IDLE)
-    return;
+  if (state_ != State::IDLE) {
+    RCLCPP_INFO(get_logger(), "Wake word: barge-in, cancelling current turn");
+    cancel_current_turn();
+  }
   RCLCPP_INFO(get_logger(), "Wake word detected");
+  reset_session_timer();
   transition(State::LISTENING);
 }
 
 void BrainNode::on_asr_text(const std_msgs::msg::String &msg) {
-  if (state_ == State::IDLE)
+  if (state_ == State::IDLE) {
     transition(State::LISTENING);
-  if (state_ != State::LISTENING)
-    return;
+  } else if (state_ != State::LISTENING) {
+    RCLCPP_INFO(get_logger(), "ASR barge-in, cancelling current turn");
+    cancel_current_turn();
+    transition(State::LISTENING);
+  }
   RCLCPP_INFO(get_logger(), "ASR: %s", msg.data.c_str());
+  reset_session_timer();
   request_inference(trigger_types::kVoice, msg.data);
 }
 
@@ -178,6 +188,7 @@ void BrainNode::process_chunk(
     for (auto &s : sentences) {
       auto sentence_msg = buddy_interfaces::msg::Sentence();
       sentence_msg.session_id = session_id_;
+      sentence_msg.turn_id = turn_id_;
       sentence_msg.text = s;
       sentence_msg.index = sentence_index_++;
       sentence_pub_->publish(sentence_msg);
@@ -196,6 +207,9 @@ void BrainNode::on_local_chunk(
     const buddy_interfaces::msg::InferenceChunk &msg) {
   if (state_ != State::REQUESTING)
     return;
+  // Ignore chunks from expired turns
+  if (!msg.turn_id.empty() && msg.turn_id != turn_id_)
+    return;
   process_chunk(msg);
   if (msg.is_final) {
     // Local is not authoritative; transition to SPEAKING so the cycle
@@ -206,6 +220,9 @@ void BrainNode::on_local_chunk(
 
 void BrainNode::on_cloud_chunk(
     const buddy_interfaces::msg::InferenceChunk &msg) {
+  // Ignore chunks from expired turns
+  if (!msg.turn_id.empty() && msg.turn_id != turn_id_)
+    return;
   // Accept cloud in any post-request state (REQUESTING, SPEAKING, or even
   // IDLE when the TTS stub completes instantly before cloud arrives).
   if (state_ == State::LISTENING || state_ == State::EMOTION_TRIGGER)
@@ -234,6 +251,7 @@ void BrainNode::on_cloud_chunk(
 
 void BrainNode::on_tts_done(const std_msgs::msg::Empty &) {
   if (state_ == State::SPEAKING) {
+    if (speaking_watchdog_) speaking_watchdog_->cancel();
     RCLCPP_INFO(get_logger(), "TTS done, returning to idle");
     transition(State::IDLE);
   }
@@ -247,20 +265,41 @@ void BrainNode::transition(State new_state) {
   RCLCPP_INFO(get_logger(), "State: %s -> %s", names[static_cast<int>(state_)],
               names[static_cast<int>(new_state)]);
   state_ = new_state;
+
+  // SPEAKING watchdog: safety net in case tts_done is lost
+  if (new_state == State::SPEAKING) {
+    speaking_watchdog_ = create_wall_timer(std::chrono::seconds(30), [this]() {
+      RCLCPP_WARN(get_logger(), "SPEAKING watchdog timeout, forcing IDLE");
+      speaking_watchdog_->cancel();
+      state_ = State::IDLE;
+    });
+  } else if (speaking_watchdog_) {
+    speaking_watchdog_->cancel();
+  }
 }
 
 void BrainNode::request_inference(const std::string &trigger_type,
                                   const std::string &user_text) {
-  auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                    .count();
-  session_id_ = "sess-" + std::to_string(now_ms);
+  // New session if none exists
+  if (session_id_.empty()) {
+    auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::system_clock::now().time_since_epoch())
+                      .count();
+    session_id_ = "sess-" + std::to_string(now_ms);
+    turn_counter_ = 0;
+    history_.clear();
+  }
+
+  // New turn within the session
+  turn_id_ = session_id_ + "-t" + std::to_string(++turn_counter_);
   sentence_buffer_.clear();
   sentence_index_ = 0;
   first_cloud_chunk_ = true;
   response_text_.clear();
 
   auto req = buddy_interfaces::msg::InferenceRequest();
+  req.session_id = session_id_;
+  req.turn_id = turn_id_;
   req.trigger_type = trigger_type;
   req.user_text = user_text;
   req.emotion = current_emotion_;
@@ -286,17 +325,31 @@ void BrainNode::request_inference(const std::string &trigger_type,
     }
   }
 
+  // Wait for image capture to complete before publishing
+  if (capture_future_.valid()) {
+    auto status = capture_future_.wait_for(std::chrono::milliseconds(500));
+    if (status == std::future_status::ready) {
+      auto result = capture_future_.get();
+      if (result && !result->image.data.empty()) {
+        req.image = result->image;
+        RCLCPP_DEBUG(get_logger(), "Image attached to inference request");
+      }
+    } else {
+      RCLCPP_WARN(get_logger(), "Image capture timed out, proceeding without image");
+    }
+  }
+
   inference_request_pub_->publish(req);
   transition(State::REQUESTING);
 }
 
 void BrainNode::flush_sentence_buffer(const std::string &session_id) {
-  if (sentence_buffer_.empty())
-    return;
   auto s = buddy_interfaces::msg::Sentence();
   s.session_id = session_id;
+  s.turn_id = turn_id_;
   s.text = sentence_buffer_;
   s.index = sentence_index_++;
+  s.is_final = true;
   sentence_pub_->publish(s);
   sentence_buffer_.clear();
 }
@@ -305,6 +358,32 @@ void BrainNode::trim_history() {
   while (static_cast<int>(history_.size()) > max_history_turns_ * 2) {
     history_.pop_front();
   }
+}
+
+void BrainNode::reset_session_timer() {
+  if (session_timer_) session_timer_->cancel();
+  session_timer_ = create_wall_timer(
+      std::chrono::duration<double>(session_timeout_seconds_),
+      [this]() {
+        RCLCPP_INFO(get_logger(), "Session timed out, clearing context");
+        session_id_.clear();
+        history_.clear();
+        session_timer_->cancel();
+      });
+}
+
+void BrainNode::cancel_current_turn() {
+  // Send cancel signal to audio pipeline (empty sentence with current turn_id)
+  auto msg = buddy_interfaces::msg::Sentence();
+  msg.session_id = session_id_;
+  msg.turn_id = turn_id_;
+  msg.is_final = true;
+  msg.text = "";
+  sentence_pub_->publish(msg);
+  // Roll back orphaned user history entry
+  if (!history_.empty() &&
+      history_.back().rfind("user: ", 0) == 0)
+    history_.pop_back();
 }
 
 std::vector<std::string> BrainNode::segment(const std::string &text) {

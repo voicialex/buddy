@@ -20,12 +20,14 @@ mv prebuilt/onnxruntime-linux-x64-1.21.0 prebuilt/onnxruntime
 # Build all packages (output goes to output/)
 ./build.sh
 
+# Clean build (removes output/ first)
+./build.sh -c
+
 # Build specific packages
 ./build.sh --packages-select buddy_audio buddy_state_machine
 
-# Load workspace and run
-source output/install/setup.bash
-./output/install/buddy_app/lib/buddy_app/buddy_main
+# Run the robot (sources setup, detects/replaces stale processes)
+./run.sh
 ```
 
 ## Testing

@@ -50,9 +50,16 @@ private:
                          const std::string &user_text);
   void flush_sentence_buffer(const std::string &session_id);
   void trim_history();
+  void reset_session_timer();
+  void cancel_current_turn();
 
   State state_{State::IDLE};
   std::string session_id_;
+  std::string turn_id_;
+  int turn_counter_{0};
+  rclcpp::TimerBase::SharedPtr session_timer_;
+  rclcpp::TimerBase::SharedPtr speaking_watchdog_;
+  double session_timeout_seconds_{60.0};
 
   std::deque<std::string> history_;
   int max_history_turns_{10};
