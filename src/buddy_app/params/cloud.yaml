@@ -1,0 +1,10 @@
+# API key priority: env DOUBAO_API_KEY > doubao.api_key below
+# Set env:  export DOUBAO_API_KEY="your-key-here"
+cloud:
+  ros__parameters:
+    doubao:
+      api_key: ""
+      model: "doubao-seed-2-0-mini-260428"
+      endpoint: "https://ark.cn-beijing.volces.com/api/v3/responses"
+    image_max_width: 512
+    timeout_seconds: 30

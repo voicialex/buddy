@@ -1,0 +1,11 @@
+# Pre-built dependencies (176MB: sherpa-onnx, onnxruntime, ros2_core)
+prebuilt/
+
+# Build output (build/, install/, log/)
+output/
+
+# build artifacts inside source tree (generated CMake, rosidl, etc.)
+src/buddy_robot/build/
+
+# planning and spec docs from superpowers skills
+docs/superpowers/

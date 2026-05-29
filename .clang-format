@@ -1,0 +1,42 @@
+# Based on Google C++ Style Guide with project-specific adjustments
+# https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+
+BasedOnStyle: Google
+
+# Line length — 120 is the modern default for readable wide-screen editing
+ColumnLimit: 120
+
+# Indentation
+IndentWidth: 4
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+
+# Braces — K&R style (Stroustrup variant)
+BreakBeforeBraces: Attach
+
+# Includes — sorted, grouped
+SortIncludes: CaseInsensitive
+IncludeBlocks: Regroup
+
+# Alignment
+AlignAfterOpenBracket: Align
+AlignConsecutiveMacros: Consecutive
+AlignOperands: Align
+AlignTrailingComments: true
+
+# Short forms — keep concise code readable
+AllowShortBlocksOnASingleLine: Empty
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+
+# Pointer/reference alignment
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+
+# Misc
+BinPackArguments: false
+BinPackParameters: false
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true

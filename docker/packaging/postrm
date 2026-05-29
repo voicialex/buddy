@@ -1,0 +1,19 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    purge)
+        # Remove all runtime data, models, logs, venv
+        rm -rf /opt/buddy
+        # Remove system user
+        if id buddy >/dev/null 2>&1; then
+            userdel buddy 2>/dev/null || true
+        fi
+        # Remove systemd unit file residual
+        rm -f /lib/systemd/system/buddy.service
+        systemctl daemon-reload
+        ;;
+    remove)
+        # dpkg --remove: keep config/data for potential reinstall
+        ;;
+esac

@@ -1,0 +1,16 @@
+[Unit]
+Description=Buddy Robot
+After=network.target sound.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/opt/buddy/etc/buddy.env
+ExecStart=/opt/buddy/run.sh
+Restart=on-failure
+RestartSec=3
+User=buddy
+Group=audio
+WorkingDirectory=/opt/buddy
+
+[Install]
+WantedBy=multi-user.target

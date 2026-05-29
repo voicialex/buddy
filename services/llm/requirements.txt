@@ -1,0 +1,5 @@
+fastapi>=0.104
+uvicorn>=0.24
+httpx>=0.25
+openai>=1.0
+pyyaml>=6.0

@@ -1,0 +1,11 @@
+output/
+.git/
+prebuilt/
+!prebuilt/aarch64/
+venv-tts/
+graphify-out/
+refs/
+third_party/*
+!third_party/funasr-runtime/
+!third_party/opencv/
+models/ollama/

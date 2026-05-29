@@ -1,0 +1,4 @@
+llm_bridge:
+  ros__parameters:
+    server_url: "http://127.0.0.1:8002"
+    mode: "local_route"

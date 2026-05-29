@@ -1,0 +1,10 @@
+# Toggle modules on/off for development.
+# Set to false to skip loading a module at startup.
+# Missing entries default to true (enabled).
+modules:
+  audio: true
+  vision: false
+  camera_emotion: false
+  camera_game: false
+  brain: true
+  llm_bridge: true

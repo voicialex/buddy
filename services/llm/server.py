@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""Unified LLM Service for buddy robot.
+
+Provides SSE streaming interface for all LLM inference modes.
+Replaces C++ buddy_local_llm + buddy_cloud nodes.
+"""
+import asyncio
+import json
+import logging
+import sys
+from pathlib import Path
+
+import uvicorn
+import yaml
+from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from backends.ollama import OllamaBackend
+from backends.openai_compat import OpenAICompatBackend
+from memory import MemoryManager, MemoryStore, Summarizer
+from router import Router
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("llm_server")
+
+app = FastAPI(title="Buddy LLM Service")
+
+router: Router | None = None
+memory_manager: MemoryManager | None = None
+config: dict = {}
+
+
+def load_config() -> dict:
+    config_path = Path(__file__).parent / "config.yaml"
+    if config_path.exists():
+        with open(config_path) as f:
+            return yaml.safe_load(f)
+    return {}
+
+
+def create_backend(cfg: dict):
+    backend_type = cfg.get("backend", "")
+    if backend_type == "ollama":
+        return OllamaBackend(url=cfg.get("url", "http://localhost:11434"), model=cfg.get("model", "buddy"))
+    elif backend_type == "openai_compat":
+        return OpenAICompatBackend(
+            base_url=cfg.get("base_url", ""),
+            model=cfg.get("model", ""),
+            api_key_env=cfg.get("api_key_env", ""),
+            api_key=cfg.get("api_key", ""),
+        )
+    return None
+
+
+@app.on_event("startup")
+async def startup():
+    global router, memory_manager, config
+    config = load_config()
+    local_cfg = config.get("local", {})
+    cloud_cfg = config.get("cloud", {})
+
+    local_backend = create_backend(local_cfg) if local_cfg else None
+    cloud_backend = None
+    try:
+        cloud_backend = create_backend(cloud_cfg) if cloud_cfg else None
+    except ValueError as e:
+        logger.warning(f"Cloud backend disabled: {e}")
+
+    router = Router(local=local_backend, cloud=cloud_backend)
+
+    # Initialize memory system
+    memory_cfg = config.get("memory", {})
+    if memory_cfg.get("enabled", False) and cloud_backend:
+        data_dir = Path(__file__).parent / memory_cfg.get("data_dir", "data/memory")
+        store = MemoryStore(data_dir=data_dir)
+        summarizer = Summarizer(cloud_backend=cloud_backend)
+        memory_manager = MemoryManager(store=store, summarizer=summarizer, config=memory_cfg)
+        logger.info(f"[MEMORY] enabled, data_dir={data_dir}")
+    else:
+        logger.info("[MEMORY] disabled (memory.enabled=false or no cloud backend)")
+
+    logger.info(
+        f"LLM service ready: local={type(local_backend).__name__ if local_backend else 'None'}, "
+        f"cloud={type(cloud_backend).__name__ if cloud_backend else 'None'}"
+    )
+
+
+@app.post("/v1/chat")
+async def chat(request: Request):
+    body = await request.json()
+    messages = body.get("messages", [])
+    mode = body.get("mode", config.get("mode", "local_route"))
+    session_id = body.get("session_id", "default")
+    emotion = body.get("emotion", "")
+    image_base64 = body.get("image_base64", "")
+    user_text = messages[-1].get("content", "") if messages else ""
+
+    logger.info(f"[REQ] mode={mode}, session={session_id}, emotion={emotion}, has_image={bool(image_base64)}, user={user_text[:60]}")
+
+    # Enhance messages with memory context
+    if memory_manager:
+        enhanced_messages = await memory_manager.build_context(session_id, messages)
+    else:
+        enhanced_messages = messages
+
+    local_prompt = config.get("local", {}).get("system_prompt", "")
+    cloud_prompt = config.get("cloud", {}).get("system_prompt", "")
+    rules = config.get("rules", "")
+    if rules:
+        local_prompt = f"{local_prompt}\n{rules}" if local_prompt else rules
+        cloud_prompt = f"{cloud_prompt}\n{rules}" if cloud_prompt else rules
+
+    # Inject emotion context into prompts
+    if emotion:
+        emotion_hint = f"\n[用户当前情绪: {emotion}]"
+        local_prompt += emotion_hint
+        cloud_prompt += emotion_hint
+
+    routing_prompt = config.get("local", {}).get("routing_prompt", "")
+
+    async def event_stream():
+        full_response = []
+        async for chunk in router.route(enhanced_messages, mode, local_prompt, cloud_prompt, routing_prompt, image_base64):
+            if chunk.text:
+                full_response.append(chunk.text)
+            data = json.dumps(
+                {"text": chunk.text, "source": chunk.source, "model": chunk.model, "done": chunk.done},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            yield f"data: {data}\n\n"
+
+        # Save turn to memory after response completes
+        if memory_manager and full_response:
+            assistant_text = "".join(full_response)
+            asyncio.create_task(
+                memory_manager.save_turn(session_id, user_text, assistant_text)
+            )
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.post("/v1/session/end")
+async def session_end(request: Request):
+    """Endpoint for C++ brain to signal session end."""
+    body = await request.json()
+    session_id = body.get("session_id", "")
+    if memory_manager and session_id:
+        asyncio.create_task(memory_manager.on_session_end(session_id))
+        return {"status": "ok", "session_id": session_id}
+    return {"status": "noop"}
+
+
+@app.get("/health")
+async def health():
+    local_ok = await router.local.health_check() if router and router.local else False
+    cloud_ok = await router.cloud.health_check() if router and router.cloud else False
+    return {"local": local_ok, "cloud": cloud_ok, "memory": memory_manager is not None}
+
+
+if __name__ == "__main__":
+    cfg = load_config()
+    server_cfg = cfg.get("server", {})
+    uvicorn.run(
+        "server:app",
+        host=server_cfg.get("host", "127.0.0.1"),
+        port=server_cfg.get("port", 8002),
+        log_level="info",
+    )

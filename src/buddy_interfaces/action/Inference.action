@@ -1,0 +1,18 @@
+# Goal
+string session_id
+string turn_id
+string trigger_type
+string user_text
+string emotion
+float32 emotion_confidence
+string[] dialog_history
+string system_prompt
+sensor_msgs/Image image
+---
+# Result
+string full_response
+bool success
+string error_message
+---
+# Feedback
+string chunk_text

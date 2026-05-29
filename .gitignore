@@ -1,0 +1,21 @@
+models/
+logs/
+output/
+build/
+install/
+log/
+__pycache__/
+prebuilt/*
+!prebuilt/README.md
+*.rknn
+*.onnx
+asset/
+venv-tts/
+.venv/
+services/*/.venv/
+graphify-out/
+# third_party/ managed via git submodules
+venv-asr/
+docs/
+refs/
+

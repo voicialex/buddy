@@ -1,0 +1,20 @@
+#!/bin/bash
+set -e
+if ! id -u buddy >/dev/null 2>&1; then
+    useradd --system --no-create-home --shell /usr/sbin/nologin \
+        --groups audio buddy
+fi
+systemctl daemon-reload
+systemctl enable buddy.service
+echo ""
+echo "══════════════════════════════════════════════════════"
+echo "  Buddy installed. Start with: sudo systemctl start buddy"
+echo ""
+echo "  NOTE: Models are packaged separately."
+echo "  Install models:"
+echo "    tar xf buddy-models_*_all.tar -C /opt/buddy/models/"
+echo ""
+echo "  Optional - Ollama LLM:"
+echo "    curl -fsSL https://ollama.com/install.sh | sh"
+echo "    ollama pull qwen2.5:7b"
+echo "══════════════════════════════════════════════════════"

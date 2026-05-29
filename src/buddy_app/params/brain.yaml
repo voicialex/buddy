@@ -1,0 +1,16 @@
+brain:
+  ros__parameters:
+    system_prompt_path: "params/system_prompt.txt"
+    max_history_turns: 10
+    session_timeout_seconds: 60.0
+    speaking_watchdog_seconds: 60.0
+    emotion_trigger:
+      enabled: true
+      negative_emotions: ["sad", "angry", "fear"]
+      confidence_threshold: 0.7
+      duration_seconds: 3.0
+      cooldown_seconds: 60.0
+    voice_trigger:
+      attach_image: true
+      followup_echo_guard_seconds: 8.0
+      followup_echo_guard_min_chars: 4

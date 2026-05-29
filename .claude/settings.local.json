@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -rf src/buddy_audio/models/funasr-paraformer-zh/*)",
+      "Bash(modelscope download *)"
+    ],
+    "additionalDirectories": [
+      "/home/zzhxwt1/workspace/buddy_ws"
+    ]
+  }
+}

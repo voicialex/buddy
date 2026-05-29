@@ -1,0 +1,7 @@
+ChatTTS
+fastapi
+uvicorn[standard]
+scipy
+numpy
+requests
+# torch 和 torchaudio 由 start_tts_server.sh 根据硬件自动安装（CPU/CUDA），不在此处声明

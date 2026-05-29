@@ -1,0 +1,188 @@
+# syntax=docker/dockerfile:1
+# Cross-compile buddy for arm64 on x86 host (no QEMU, native speed)
+ARG VERSION=1.0.0
+ARG PARALLEL_WORKERS=8
+
+# ============================================================
+# Stage 1: Base environment (reuse ros2-core/humble:dev)
+# ============================================================
+FROM ros2-core/humble:dev AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# buddy-specific arm64 dependencies (cross-compiler already in base)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ccache python3-setuptools python3-venv curl \
+    libasound2-dev:arm64 \
+    libcurl4-openssl-dev:arm64 libssl-dev:arm64 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Toolchain file
+COPY docker/toolchain-aarch64.cmake /opt/toolchain-aarch64.cmake
+
+# ROS 2 Humble (arm64 prebuilt)
+COPY prebuilt/aarch64/ros2_core /opt/ros2_core
+ENV COLCON_PREFIX_PATH=/opt/ros2_core
+
+RUN pip3 install --no-cache-dir "empy==3.3.4" lark
+
+# Prebuilt aarch64 dependencies
+COPY prebuilt/aarch64/sherpa-onnx /opt/prebuilt/sherpa-onnx
+COPY prebuilt/aarch64/onnxruntime /opt/prebuilt/onnxruntime
+COPY prebuilt/aarch64/funasr /opt/prebuilt/funasr
+COPY prebuilt/aarch64/opencv /opt/prebuilt/opencv
+COPY prebuilt/aarch64/rknn /opt/prebuilt/rknn
+
+# ============================================================
+# Stage 2: Build buddy (colcon cross-compile)
+# ============================================================
+FROM base AS build
+
+ARG PARALLEL_WORKERS
+ARG DEVICE=cpu
+
+WORKDIR /workspace
+COPY src/ src/
+COPY cmake/ cmake/
+
+# Symlink prebuilt/current to match CMakeLists convention
+RUN mkdir -p prebuilt/aarch64 && \
+    ln -s /opt/prebuilt/sherpa-onnx prebuilt/aarch64/sherpa-onnx && \
+    ln -s /opt/prebuilt/onnxruntime prebuilt/aarch64/onnxruntime && \
+    ln -s /opt/prebuilt/opencv prebuilt/aarch64/opencv && \
+    if [ "$DEVICE" = "npu" ] && [ -d /opt/prebuilt/rknn ]; then \
+      ln -s /opt/prebuilt/rknn prebuilt/aarch64/rknn; \
+    fi && \
+    ln -s aarch64 prebuilt/current
+
+SHELL ["/bin/bash", "-c"]
+ENV CCACHE_DIR=/ccache
+ENV CMAKE_PREFIX_PATH=/opt/prebuilt/opencv:/opt/prebuilt/sherpa-onnx:/opt/prebuilt/onnxruntime
+RUN --mount=type=cache,target=/ccache \
+    . /opt/ros2_core/setup.bash && \
+    cmake_device_flag=""; \
+    if [ "$DEVICE" = "npu" ]; then cmake_device_flag="-DWITH_RKNN=ON"; fi && \
+    colcon --log-base output/log \
+      build \
+      --build-base output/build \
+      --install-base output/install \
+      --parallel-workers ${PARALLEL_WORKERS} \
+      --cmake-args \
+        --no-warn-unused-cli \
+        -DCMAKE_TOOLCHAIN_FILE=/opt/toolchain-aarch64.cmake \
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+        -DBUILD_TESTING=OFF \
+        -DBUILD_DEVICE=${DEVICE} \
+        ${cmake_device_flag}
+
+# ============================================================
+# Stage 4: Package deb
+# ============================================================
+FROM ubuntu:22.04 AS package
+
+ARG VERSION
+WORKDIR /deb-root
+
+RUN mkdir -p opt/buddy/bin opt/buddy/lib opt/buddy/lib/funasr opt/buddy/lib/sherpa opt/buddy/models opt/buddy/params opt/buddy/etc \
+            lib/systemd/system \
+            DEBIAN
+
+# Binaries and libraries from build
+COPY --from=build /workspace/output/install/ /tmp/install/
+COPY --from=build /opt/prebuilt/ /tmp/prebuilt/
+COPY --from=build /opt/ros2_core/lib/ /tmp/ros2_lib/
+COPY --from=build /opt/ros2_core/opt/ /tmp/ros2_opt/
+
+# Only the few system libs we actually need (no transitive dependency hell)
+COPY --from=base /usr/lib/aarch64-linux-gnu/libasound.so* /tmp/syslib/
+COPY --from=base /usr/lib/aarch64-linux-gnu/libcurl.so* /tmp/syslib/
+COPY --from=base /usr/lib/aarch64-linux-gnu/libssl.so* /tmp/syslib/
+COPY --from=base /usr/lib/aarch64-linux-gnu/libcrypto.so* /tmp/syslib/
+COPY --from=base /usr/lib/aarch64-linux-gnu/libnghttp2.so* /tmp/syslib/
+
+# Colcon install outputs
+RUN cp /tmp/install/buddy_app/lib/buddy_app/buddy_main opt/buddy/bin/ && \
+    find /tmp/install -name "*.so*" -type f -exec cp -n {} opt/buddy/lib/ \; && \
+    find /tmp/install -name "*.so*" -type l -exec cp -nP {} opt/buddy/lib/ \;
+
+# ROS 2 core libs
+RUN find /tmp/ros2_lib -name "*.so*" -type f -exec cp -n {} opt/buddy/lib/ \; && \
+    find /tmp/ros2_lib -name "*.so*" -type l -exec cp -nP {} opt/buddy/lib/ \; && \
+    find /tmp/ros2_opt -name "*.so*" -type f -exec cp -n {} opt/buddy/lib/ \; && \
+    find /tmp/ros2_opt -name "*.so*" -type l -exec cp -nP {} opt/buddy/lib/ \;
+
+# Sherpa-ONNX (isolated: bundles its own ORT)
+RUN cp -fP /tmp/prebuilt/sherpa-onnx/lib/*.so* opt/buddy/lib/sherpa/
+
+# ONNX Runtime CPU (arm64 has no GPU variant)
+RUN cp -fP /tmp/prebuilt/onnxruntime/lib/*.so* opt/buddy/lib/
+
+# OpenCV
+RUN cp -fP /tmp/prebuilt/opencv/lib/*.so* opt/buddy/lib/
+
+# System libs
+RUN cp -fP /tmp/syslib/* opt/buddy/lib/ 2>/dev/null || true
+
+# FunASR (isolated: own ORT + libs)
+RUN cp -fP /tmp/prebuilt/onnxruntime/lib/*.so* opt/buddy/lib/funasr/ 2>/dev/null || true && \
+    (cp -f /tmp/prebuilt/funasr/bin/funasr-wss-server opt/buddy/bin/ 2>/dev/null || true) && \
+    (cp -f /tmp/prebuilt/funasr/bin/funasr-wss-server-2pass opt/buddy/bin/ 2>/dev/null || true) && \
+    cp -fP /tmp/prebuilt/funasr/lib/*.so* opt/buddy/lib/funasr/ 2>/dev/null || true
+
+# RKNN (npu builds only — librknnrt.so)
+RUN cp -fP /tmp/prebuilt/rknn/lib/*.so* opt/buddy/lib/ 2>/dev/null || true
+
+# Params
+COPY --from=build /workspace/output/install/buddy_app/share/buddy_app/params/ opt/buddy/params/
+
+# Only include minimal keyword config needed at startup
+COPY src/buddy_app/params/keywords.txt opt/buddy/params/keywords.txt
+
+# Packaging files
+COPY docker/packaging/run.sh opt/buddy/run.sh
+COPY docker/packaging/buddy.env opt/buddy/etc/buddy.env
+COPY docker/packaging/buddy.service lib/systemd/system/buddy.service
+COPY docker/packaging/control.template DEBIAN/control
+COPY docker/packaging/postinst DEBIAN/postinst
+COPY docker/packaging/prerm DEBIAN/prerm
+COPY docker/packaging/postrm DEBIAN/postrm
+COPY docker/packaging/start_asr_server.sh opt/buddy/scripts/start_asr_server.sh
+COPY docker/packaging/start_tts_server.sh opt/buddy/scripts/start_tts_server.sh
+COPY scripts/start_llm_server.sh opt/buddy/scripts/start_llm_server.sh
+COPY scripts/common.sh opt/buddy/scripts/common.sh
+COPY services/tts/server.py opt/buddy/services/tts/server.py
+COPY services/tts/requirements.txt opt/buddy/services/tts/requirements.txt
+COPY services/llm/ opt/buddy/services/llm/
+
+RUN chmod 755 opt/buddy/run.sh opt/buddy/bin/buddy_main \
+              opt/buddy/scripts/start_asr_server.sh \
+              opt/buddy/scripts/start_tts_server.sh \
+              opt/buddy/scripts/start_llm_server.sh \
+              opt/buddy/scripts/common.sh \
+              DEBIAN/postinst DEBIAN/prerm DEBIAN/postrm && \
+    sed -i "s/__VERSION__/${VERSION}/" DEBIAN/control
+
+RUN mkdir -p /output && dpkg-deb --build /deb-root /output/buddy-robot_${VERSION}_arm64.deb
+
+# ============================================================
+# Stage 5: Models tarball (no compression, fast packaging)
+# ============================================================
+FROM busybox AS models
+
+ARG VERSION
+
+WORKDIR /models-root
+COPY models/ .
+# Remove ollama (user pulls via ollama CLI on device)
+RUN rm -rf ollama/
+
+RUN mkdir -p /output && tar cf /output/buddy-models_${VERSION}_all.tar -C /models-root .
+
+# ============================================================
+# Export both artifacts
+# ============================================================
+FROM scratch AS export
+COPY --from=package /output/*.deb /
+COPY --from=models /output/*.tar /

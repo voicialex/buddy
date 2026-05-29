@@ -1,0 +1,6 @@
+local_llm:
+  ros__parameters:
+    model_name: "buddy"
+    api_url: "http://localhost:11434"
+    timeout_seconds: 30
+    system_prompt: ""
