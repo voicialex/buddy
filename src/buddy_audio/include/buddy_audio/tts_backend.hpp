@@ -15,10 +15,14 @@ struct TtsBackendConfig {
     std::string models_dir;
     std::string model_dir;
     // Sherpa-specific
+    std::string model_type = "kokoro";  // kokoro | vits | melo
     std::string model;
     std::string tokens;
     std::string lexicon;
     std::string data_dir;
+    std::string voices;    // Kokoro voices.bin
+    std::string lang;      // Kokoro language hint (e.g. "zh")
+    std::string dict_dir;  // jieba dict dir for Chinese
     std::string rule_fsts;
     int sid = 0;
     float speed = 1.0f;

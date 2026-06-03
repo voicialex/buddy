@@ -16,6 +16,6 @@ services/*/.venv/
 graphify-out/
 # third_party/ managed via git submodules
 venv-asr/
-docs/
+services/llm/data/memory/sessions/
 refs/
 

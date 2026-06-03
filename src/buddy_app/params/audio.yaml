@@ -6,10 +6,10 @@ audio:
     #   <card_name> comes from `arecord -l` / `aplay -l` output:
     #     card 2: Device [USB PnP Sound Device]  →  CARD=Device
     #   Use `plughw` (not `hw`) for automatic sample-rate conversion (16kHz).
-    # mic_device: "plughw:CARD=Headset,DEV=0"      # desktop headset
-    # speaker_device: "plughw:CARD=Headset,DEV=0"  # desktop headset
-    mic_device: "plughw:CARD=Device,DEV=0"         # rk3588 USB PnP Sound Device
-    speaker_device: "plughw:CARD=Device,DEV=0"     # rk3588 USB PnP Sound Device
+    mic_device: "plughw:CARD=Headset,DEV=0"      # desktop headset
+    speaker_device: "plughw:CARD=Headset,DEV=0"  # desktop headset
+    #mic_device: "plughw:CARD=Device,DEV=0"         # rk3588 USB PnP Sound Device
+    #speaker_device: "plughw:CARD=Device,DEV=0"     # rk3588 USB PnP Sound Device
     sample_rate: 16000
     asr_cooldown_ms: 300
     kws:
@@ -64,12 +64,35 @@ audio:
           url: "http://127.0.0.1:9880/tts"
       local:
         sherpa:
-          model_dir: "vits-icefall-zh-aishell3"
-          model: "model.onnx"
+          model_type: "kokoro"  # kokoro | vits | melo
+          # Kokoro (default) — multi-voice, expressive, zh+en
+          model_dir: "kokoro-int8-multi-lang-v1_1"
+          model: "model.int8.onnx"
           tokens: "tokens.txt"
-          lexicon: "lexicon.txt"
-          data_dir: ""
-          rule_fsts: "number.fst,phone.fst,date.fst"
+          voices: "voices.bin"
+          lexicon: "lexicon-zh.txt"
+          dict_dir: "dict"
+          lang: "zh"
+          data_dir: "espeak-ng-data"
+          rule_fsts: "number-zh.fst,phone-zh.fst,date-zh.fst"
+          # # VITS aishell3 (backup) — 174 speakers, zh only
+          # model_type: "vits"
+          # model_dir: "vits-icefall-zh-aishell3"
+          # model: "model.onnx"
+          # tokens: "tokens.txt"
+          # voices: ""
+          # lexicon: "lexicon.txt"
+          # data_dir: ""
+          # rule_fsts: "number.fst,phone.fst,date.fst"
+          # # MeloTTS (backup) — single female voice, zh+en
+          # model_type: "melo"
+          # model_dir: "vits-melo-tts-zh_en"
+          # model: "model.onnx"
+          # tokens: "tokens.txt"
+          # voices: ""
+          # lexicon: ""
+          # data_dir: ""
+          # rule_fsts: ""
           sid: 0
           speed: 1.0
         moss:

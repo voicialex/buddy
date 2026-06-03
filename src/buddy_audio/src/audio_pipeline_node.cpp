@@ -85,10 +85,14 @@ CallbackReturn AudioPipelineNode::on_configure(const rclcpp_lifecycle::State&) {
     declare_parameter("tts.engine", "auto");
     declare_parameter("tts.runtime", "auto");
     declare_parameter("tts.server.chattts.url", "http://127.0.0.1:9880/tts");
+    declare_parameter("tts.local.sherpa.model_type", "kokoro");
     declare_parameter("tts.local.sherpa.model_dir", "");
     declare_parameter("tts.local.sherpa.model", "");
     declare_parameter("tts.local.sherpa.tokens", "");
+    declare_parameter("tts.local.sherpa.voices", "");
     declare_parameter("tts.local.sherpa.lexicon", "");
+    declare_parameter("tts.local.sherpa.lang", "");
+    declare_parameter("tts.local.sherpa.dict_dir", "");
     declare_parameter("tts.local.sherpa.data_dir", "");
     declare_parameter("tts.local.sherpa.rule_fsts", "");
     declare_parameter("tts.local.sherpa.sid", 0);
@@ -205,9 +209,13 @@ CallbackReturn AudioPipelineNode::on_configure(const rclcpp_lifecycle::State&) {
         } else if (tts_engine == "sherpa-onnx" || tts_engine == "sherpa") {
             auto tts_model_dir = get_parameter("tts.local.sherpa.model_dir").as_string();
             tts_cfg.model_dir = tts_model_dir;
+            tts_cfg.model_type = get_parameter("tts.local.sherpa.model_type").as_string();
             tts_cfg.model = resolve_path(models_dir, tts_model_dir, get_parameter("tts.local.sherpa.model").as_string());
             tts_cfg.tokens = resolve_path(models_dir, tts_model_dir, get_parameter("tts.local.sherpa.tokens").as_string());
+            tts_cfg.voices = resolve_path(models_dir, tts_model_dir, get_parameter("tts.local.sherpa.voices").as_string());
             tts_cfg.lexicon = resolve_path(models_dir, tts_model_dir, get_parameter("tts.local.sherpa.lexicon").as_string());
+            tts_cfg.lang = get_parameter("tts.local.sherpa.lang").as_string();
+            tts_cfg.dict_dir = resolve_path(models_dir, tts_model_dir, get_parameter("tts.local.sherpa.dict_dir").as_string());
             tts_cfg.data_dir = resolve_path(models_dir, tts_model_dir, get_parameter("tts.local.sherpa.data_dir").as_string());
             tts_cfg.rule_fsts = resolve_path_list(models_dir, tts_model_dir, get_parameter("tts.local.sherpa.rule_fsts").as_string());
             tts_cfg.sid = static_cast<int>(get_parameter("tts.local.sherpa.sid").as_int());

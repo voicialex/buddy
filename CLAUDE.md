@@ -102,15 +102,25 @@ Strict format: `feat(module): [PRO-10000] <Description>`
 
 The prefix `feat(module): [PRO-10000] ` is a constant string — never change it. `<Description>` is imperative, capitalized, under 50 chars (e.g., `Add dialog timeout guard`).
 
-## Key Docs
+## Obsidian Vault
 
-- `docs/architecture.md` — component topology and dependency strategy
-- `docs/vision_architecture.md` — buddy_vision internal architecture and data flow
-- `docs/communication_protocol.md` — ROS 2 topic/service/action contracts
-- `docs/plan.md` — implementation roadmap
-- `docs/requirements.md` — prebuilt dependency installation guide
-- `docs/models.md` — model preparation notes
-- `docs/testing_guide.md` — text-based testing without hardware
+项目文档由 `~/obsidian_vault/` 管理，不在仓库内。Vault 结构遵循全局规则（`~/.claude/rules/claude-rules.md`）。
+
+项目文档目录：`~/obsidian_vault/10_Projects/buddy/`
+
+| 文档 | 说明 |
+|------|------|
+| `architecture.md` | 组件拓扑与依赖策略 |
+| `vision-architecture.md` | buddy_vision 内部架构与数据流 |
+| `communication-protocol.md` | ROS 2 topic/service/action 契约 |
+| `plan.md` | 实现路线图 |
+| `requirements.md` | prebuilt 依赖安装指南 |
+| `models.md` | 模型准备笔记 |
+| `testing-guide.md` | 无硬件文本测试 |
+| `streaming-pipeline.md` | 流式管道设计 |
+| `cloud-api-key.md` | 云端 API Key 配置 |
+
+Claude 上下文记忆：`~/obsidian_vault/50_Claude/project-context/buddy.md`
 
 ## graphify
 

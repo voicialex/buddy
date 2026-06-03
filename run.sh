@@ -125,4 +125,4 @@ if [[ ${#MODELS_MISSING[@]} -gt 0 ]]; then
 fi
 
 echo "[INFO] Launching buddy_main..."
-exec "$BUDDY_MAIN" "$@"
+exec "$BUDDY_MAIN" "$@" 2>&1 | sed -E 's/\[([0-9]+\.[0-9]{3})[0-9]{6}\]/[\1]/g'

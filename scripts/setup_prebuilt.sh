@@ -64,7 +64,7 @@ Models overview (stored in models/):
   ├─────────────────────────────────────────────────────────────────────────────────┤
   │ ASR (streaming-zipformer)│ ~180MB │ GitHub k2-fsa         │ ✓ auto              │
   │ KWS (keyword spotting)   │ ~13MB  │ GitHub k2-fsa         │ ✓ auto              │
-  │ TTS (vits-icefall)       │ ~100MB │ GitHub k2-fsa         │ ✓ auto              │
+  │ TTS (kokoro-int8)        │ ~207MB │ GitHub k2-fsa         │ ✓ auto              │
   │ FunASR (paraformer-zh)   │ ~800MB │ ModelScope            │ ✓ auto (needs CLI)  │
   │ MOSS-TTS Nano            │ ~500MB │ HuggingFace           │ ✓ auto              │
   │ Emotion classifier       │ ~21KB  │ Custom (team copy)    │ ✗ manual            │
@@ -81,9 +81,15 @@ Manual download commands:
   wget https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile.tar.bz2
   tar xjf sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile.tar.bz2 -C models/
 
-  # TTS (vits)
+  # TTS (kokoro-int8, default)
+  wget https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_1.tar.bz2
+  tar xjf kokoro-int8-multi-lang-v1_1.tar.bz2 -C models/
+  # TTS (vits-aishell3, backup)
   wget https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-icefall-zh-aishell3.tar.bz2
   tar xjf vits-icefall-zh-aishell3.tar.bz2 -C models/
+  # TTS (melo, backup)
+  wget https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-melo-tts-zh_en.tar.bz2
+  tar xjf vits-melo-tts-zh_en.tar.bz2 -C models/
 
   # FunASR paraformer-zh
   pip install modelscope
@@ -411,9 +417,9 @@ setup_model_kws() {
 }
 
 setup_model_tts() {
-    local name="vits-icefall-zh-aishell3"
+    local name="kokoro-int8-multi-lang-v1_1"
     local url="https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/${name}.tar.bz2"
-    if [ -f "$MODELS_DIR/$name/model.onnx" ]; then
+    if [ -f "$MODELS_DIR/$name/model.int8.onnx" ]; then
         log_skip "TTS model ($name)"
         return 0
     fi
@@ -423,6 +429,36 @@ setup_model_tts() {
     tar xjf "$tmp" -C "$MODELS_DIR" || { rm -f "$tmp"; log_err "Failed to extract TTS model"; return 1; }
     rm -f "$tmp"
     log_ok "TTS model ($name)"
+}
+
+setup_model_tts_melo() {
+    local name="vits-melo-tts-zh_en"
+    local url="https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/${name}.tar.bz2"
+    if [ -f "$MODELS_DIR/$name/model.onnx" ]; then
+        log_skip "TTS MeloTTS model ($name)"
+        return 0
+    fi
+    log_step "Downloading MeloTTS model ($name) ..."
+    local tmp="$MODELS_DIR/${name}.tar.bz2"
+    download "$url" "$tmp" || { log_err "Failed to download MeloTTS model"; return 1; }
+    tar xjf "$tmp" -C "$MODELS_DIR" || { rm -f "$tmp"; log_err "Failed to extract MeloTTS model"; return 1; }
+    rm -f "$tmp"
+    log_ok "TTS MeloTTS model ($name)"
+}
+
+setup_model_tts_vits() {
+    local name="vits-icefall-zh-aishell3"
+    local url="https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/${name}.tar.bz2"
+    if [ -f "$MODELS_DIR/$name/model.onnx" ]; then
+        log_skip "TTS VITS model ($name)"
+        return 0
+    fi
+    log_step "Downloading VITS TTS model ($name) ..."
+    local tmp="$MODELS_DIR/${name}.tar.bz2"
+    download "$url" "$tmp" || { log_err "Failed to download VITS TTS model"; return 1; }
+    tar xjf "$tmp" -C "$MODELS_DIR" || { rm -f "$tmp"; log_err "Failed to extract VITS TTS model"; return 1; }
+    rm -f "$tmp"
+    log_ok "TTS VITS model ($name)"
 }
 
 setup_model_funasr() {
