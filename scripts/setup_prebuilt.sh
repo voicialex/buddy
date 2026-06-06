@@ -29,7 +29,7 @@ Usage: ./scripts/setup_prebuilt.sh [OPTIONS] [COMMAND]
 
 Commands:
   all       Install prebuilt libs + all models (default)
-  prebuilt  Only prebuilt libs (ros2_core, onnxruntime, sherpa-onnx, ort-gpu, sentencepiece)
+  prebuilt  Only prebuilt libs (ros2_core, onnxruntime, sherpa-onnx, ort-gpu, sentencepiece, rkllm)
   models    Only models (ASR, KWS, TTS, FunASR, MOSS-TTS, Emotion, ChatTTS hint, Ollama hint)
   funasr    Only FunASR runtime + model
   moss-tts  Only MOSS-TTS dependencies + models
@@ -63,6 +63,7 @@ Models overview (stored in models/):
   │ Model                    │ Size   │ Source                │ Auto?               │
   ├─────────────────────────────────────────────────────────────────────────────────┤
   │ ASR (streaming-zipformer)│ ~180MB │ GitHub k2-fsa         │ ✓ auto              │
+  │ ASR RKNN (rk3588)        │ ~50MB  │ HuggingFace csukuangfj│ ✓ auto (arm64 only) │
   │ KWS (keyword spotting)   │ ~13MB  │ GitHub k2-fsa         │ ✓ auto              │
   │ TTS (kokoro-int8)        │ ~207MB │ GitHub k2-fsa         │ ✓ auto              │
   │ FunASR (paraformer-zh)   │ ~800MB │ ModelScope            │ ✓ auto (needs CLI)  │
@@ -70,12 +71,18 @@ Models overview (stored in models/):
   │ Emotion classifier       │ ~21KB  │ Custom (team copy)    │ ✗ manual            │
   │ ChatTTS                  │ ~1.2GB │ HuggingFace (auto DL) │ ✗ hint only         │
   │ Ollama (qwen2.5:7b)     │ ~4.4GB │ ollama pull           │ ✗ hint only         │
+  │ RKLLM (Qwen3-4B-w8a8)   │ ~3.5GB │ rknn-llm model zoo    │ ✗ manual (NPU only) │
   └─────────────────────────────────────────────────────────────────────────────────┘
 
 Manual download commands:
   # ASR
   wget https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2
   tar xjf sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2 -C models/
+
+  # ASR RKNN (RK3588 NPU only, auto-downloaded for arm64)
+  wget https://huggingface.co/csukuangfj/sherpa-onnx-rknn-models/resolve/main/streaming-asr/sherpa-onnx-rk3588-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2
+  mkdir -p models/zipformer-rknn
+  tar xjf sherpa-onnx-rk3588-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2 -C models/zipformer-rknn --strip-components=1
 
   # KWS
   wget https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile.tar.bz2
@@ -110,6 +117,12 @@ Manual download commands:
   # Ollama LLM
   curl -fsSL https://ollama.com/install.sh | sh
   ollama pull qwen2.5:7b
+
+  # RKLLM (NPU builds only — pre-converted models from rknn-llm model zoo)
+  # Download from: https://console.box.lenovo.com/l/l0tXb8 (fetch code: rkllm)
+  # Place .rkllm files in models/rkllm/
+  mkdir -p models/rkllm
+  mv Qwen3-4B-rk3588-w8a8.rkllm models/rkllm/
 
 Examples:
   ./scripts/setup_prebuilt.sh                        # Install everything (host arch)
@@ -148,6 +161,10 @@ cd "$PROJECT_DIR"
 
 # ROS 2 tarball
 ROS2_CORE_BASE="$PROJECT_DIR/../ros2_core/output"
+
+# RKNN-LLM (external repo at workspace root)
+RKNN_LLM_BASE="$PROJECT_DIR/../rknn-llm"
+
 ROS2_TARBALL_PATH=""
 if [ -f "$ROS2_CORE_BASE/humble/${ARCH_NORMALIZED}/ros2-humble-${ARCH_NORMALIZED}.tar.gz" ]; then
     ROS2_TARBALL_PATH="$ROS2_CORE_BASE/humble/${ARCH_NORMALIZED}/ros2-humble-${ARCH_NORMALIZED}.tar.gz"
@@ -356,6 +373,33 @@ setup_rknn() {
     return 1
 }
 
+setup_rkllm() {
+    # Only needed for aarch64 builds (RK3588 NPU LLM)
+    if [ "$ARCH_NORMALIZED" != "aarch64" ]; then
+        log_skip "RKLLM Runtime (x86_64, not needed)"
+        return 0
+    fi
+    if [ -f "$PREBUILT_DIR/rkllm/lib/librkllmrt.so" ]; then
+        log_skip "RKLLM Runtime (rk3588)"
+        return 0
+    fi
+    # RKLLM runtime is in external rknn-llm repo at workspace root
+    local rkllm_src="$RKNN_LLM_BASE/rkllm-runtime/Linux/librkllm_api/aarch64/librkllmrt.so"
+    if [ ! -f "$rkllm_src" ]; then
+        log_err "RKLLM Runtime not found: $rkllm_src"
+        echo "       Clone rknn-llm to $RKNN_LLM_BASE"
+        return 1
+    fi
+    log_step "Installing RKLLM Runtime (rk3588) ..."
+    mkdir -p "$PREBUILT_DIR/rkllm/lib"
+    cp "$rkllm_src" "$PREBUILT_DIR/rkllm/lib/"
+    # Also copy to flask_server's expected location
+    local flask_lib_dir="$RKNN_LLM_BASE/examples/rkllm_server_demo/rkllm_server/lib"
+    mkdir -p "$flask_lib_dir"
+    cp "$rkllm_src" "$flask_lib_dir/"
+    log_ok "RKLLM Runtime"
+}
+
 setup_sentencepiece() {
     if [ -f "$PREBUILT_DIR/sentencepiece/lib/libsentencepiece.so" ]; then
         log_skip "SentencePiece v${SENTENCEPIECE_VERSION}"
@@ -397,6 +441,27 @@ setup_model_asr() {
     tar xjf "$tmp" -C "$MODELS_DIR" || { rm -f "$tmp"; log_err "Failed to extract ASR model"; return 1; }
     rm -f "$tmp"
     log_ok "ASR model ($name)"
+}
+
+setup_model_asr_rknn() {
+    # Only needed for arm64 (RK3588 NPU)
+    if [ "$ARCH_NORMALIZED" != "aarch64" ]; then
+        log_skip "ASR RKNN model (x86_64, not needed)"
+        return 0
+    fi
+    local name="sherpa-onnx-rk3588-streaming-zipformer-bilingual-zh-en-2023-02-20"
+    local url="https://huggingface.co/csukuangfj/sherpa-onnx-rknn-models/resolve/main/streaming-asr/${name}.tar.bz2"
+    if [ -f "$MODELS_DIR/zipformer-rknn/tokens.txt" ]; then
+        log_skip "ASR RKNN model ($name)"
+        return 0
+    fi
+    log_step "Downloading ASR RKNN model ($name) ..."
+    local tmp="$MODELS_DIR/${name}.tar.bz2"
+    download "$url" "$tmp" || { log_err "Failed to download ASR RKNN model"; return 1; }
+    mkdir -p "$MODELS_DIR/zipformer-rknn"
+    tar xjf "$tmp" -C "$MODELS_DIR/zipformer-rknn" --strip-components=1 || { rm -f "$tmp"; log_err "Failed to extract ASR RKNN model"; return 1; }
+    rm -f "$tmp"
+    log_ok "ASR RKNN model ($name)"
 }
 
 setup_model_kws() {
@@ -607,6 +672,7 @@ do_prebuilt() {
     setup_onnxruntime_gpu
     setup_sentencepiece
     setup_rknn
+    setup_rkllm
 
     ln -sfn "${ARCH_NORMALIZED}" "$PROJECT_DIR/prebuilt/current"
     log_ok "Symlink: prebuilt/current -> ${ARCH_NORMALIZED}"
@@ -643,6 +709,7 @@ do_models() {
     log_stage "Models: Auto-download"
     mkdir -p "$MODELS_DIR"
     setup_model_asr
+    setup_model_asr_rknn
     setup_model_kws
     setup_model_tts
     setup_model_funasr

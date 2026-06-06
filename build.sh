@@ -47,7 +47,7 @@ build_arm64() {
   local parallel="${BUDDY_PARALLEL_WORKERS:-$(nproc)}"
   local output_dir="$ROOT_DIR/output/aarch64/deb"
 
-  echo "[INFO] Building buddy-robot_${version}_arm64.deb (cross-compile, no QEMU)"
+  echo "[INFO] Building buddy-robot_${version}_arm64_${DEVICE}.deb (cross-compile, no QEMU)"
   echo "[INFO] Device target: $DEVICE"
 
   # Ensure prebuilt deps exist (auto-install if missing)
@@ -64,9 +64,22 @@ build_arm64() {
       die "RKNN SDK not found at prebuilt/aarch64/rknn" \
           "Run: cd ../thirdparty && ./build.sh -t arm64 rknn"
     fi
+
+    # Copy flask_server.py from rknn-llm repo into buddy for Docker packaging
+    local rkllm_flask="$ROOT_DIR/../rknn-llm/examples/rkllm_server_demo/rkllm_server/flask_server.py"
+    if [[ -f "$rkllm_flask" ]]; then
+      mkdir -p "$ROOT_DIR/docker/rkllm_server"
+      cp "$rkllm_flask" "$ROOT_DIR/docker/rkllm_server/"
+      echo "[INFO] Copied flask_server.py for RKLLM packaging"
+    else
+      die "RKLLM flask_server.py not found at $rkllm_flask" \
+          "Clone rknn-llm to $ROOT_DIR/../rknn-llm"
+    fi
   else
     # Empty placeholder so Docker COPY doesn't fail
     mkdir -p "$ROOT_DIR/prebuilt/aarch64/rknn"
+    mkdir -p "$ROOT_DIR/docker/rkllm_server"
+    touch "$ROOT_DIR/docker/rkllm_server/flask_server.py"
   fi
 
   # Ensure third_party (FunASR + OpenCV) prebuilt
@@ -96,11 +109,20 @@ build_arm64() {
     -f "$DOCKER_DIR/Dockerfile.arm64" \
     "$ROOT_DIR"
 
-  local deb_file="$output_dir/deb/buddy-robot_${version}_arm64.deb"
-  local models_file="$output_dir/deb/buddy-models_${version}_all.tar"
+  local deb_file="$output_dir/buddy-robot_${version}_arm64_${DEVICE}.deb"
+  local models_file="$output_dir/buddy-models_${version}_${DEVICE}.tar.gz"
   echo ""
   [[ -f "$deb_file" ]] && echo "[OK] Package: $deb_file ($(du -sh "$deb_file" | cut -f1))"
   [[ -f "$models_file" ]] && echo "[OK] Models:  $models_file ($(du -sh "$models_file" | cut -f1))"
+
+  if [[ -f "$models_file" ]]; then
+    echo ""
+    echo "Deploy to RK3588 board:"
+    echo "  scp $deb_file $models_file user@board:/tmp/"
+    echo "  ssh user@board 'sudo dpkg -i /tmp/buddy-robot_${version}_arm64_${DEVICE}.deb'"
+    echo "  ssh user@board 'sudo mkdir -p /opt/buddy/models && sudo tar xzf /tmp/buddy-models_${version}_${DEVICE}.tar.gz -C /opt/buddy/models/'"
+    echo "  ssh user@board 'sudo systemctl start buddy'"
+  fi
 }
 
 # ============================================================

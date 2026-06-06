@@ -1,5 +1,7 @@
 #include "buddy_audio/audio_pipeline_node.hpp"
 
+#include <dlfcn.h>
+
 #include <filesystem>
 #include <sstream>
 
@@ -136,9 +138,20 @@ CallbackReturn AudioPipelineNode::on_configure(const rclcpp_lifecycle::State&) {
     auto asr_engine = get_parameter("asr.engine").as_string();
     auto asr_runtime = get_parameter("asr.runtime").as_string();
 
-    // Auto-detection
+    // Auto-detection: probe librknnrt.so via dlopen
     if (asr_runtime == "auto") {
-        asr_runtime = "onnxruntime";  // TODO: dlopen rknnrt probe
+#ifdef HAS_RKNN
+        void* rknn_handle = dlopen("librknnrt.so", RTLD_LAZY | RTLD_NOLOAD);
+        if (!rknn_handle) rknn_handle = dlopen("librknnrt.so", RTLD_LAZY);
+        if (rknn_handle) {
+            asr_runtime = "rknnruntime";
+            dlclose(rknn_handle);
+            RCLCPP_INFO(get_logger(), "RKNN runtime detected, using NPU for ASR");
+        } else
+#endif
+        {
+            asr_runtime = "onnxruntime";
+        }
     }
     if (asr_engine == "auto") {
         asr_engine = (asr_runtime == "rknnruntime") ? "native" : "sherpa-onnx";
@@ -190,9 +203,9 @@ CallbackReturn AudioPipelineNode::on_configure(const rclcpp_lifecycle::State&) {
     auto tts_engine = get_parameter("tts.engine").as_string();
     auto tts_runtime = get_parameter("tts.runtime").as_string();
 
-    // Auto-detection
+    // Auto-detection: TTS has no RKNN backend yet, always use onnxruntime
     if (tts_runtime == "auto") {
-        tts_runtime = "onnxruntime";  // TODO: dlopen rknnrt probe
+        tts_runtime = "onnxruntime";
     }
     if (tts_engine == "auto") {
         tts_engine = (tts_runtime == "rknnruntime") ? "native" : "sherpa-onnx";

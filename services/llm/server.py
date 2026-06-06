@@ -7,6 +7,7 @@ Replaces C++ buddy_local_llm + buddy_cloud nodes.
 import asyncio
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -19,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from backends.ollama import OllamaBackend
 from backends.openai_compat import OpenAICompatBackend
+from backends.rk_llm import RkLlmBackend
+from backends.vllm import VLLMBackend
 from memory import MemoryManager, MemoryStore, Summarizer
 from router import Router
 
@@ -51,17 +54,59 @@ def create_backend(cfg: dict):
             api_key_env=cfg.get("api_key_env", ""),
             api_key=cfg.get("api_key", ""),
         )
+    elif backend_type == "vllm":
+        return VLLMBackend(
+            base_url=cfg.get("base_url", "http://localhost:8000"),
+            model=cfg.get("model", "Qwen/Qwen3-4B"),
+            api_key=cfg.get("api_key", "EMPTY"),
+            enable_thinking=cfg.get("enable_thinking"),
+        )
+    elif backend_type == "rk_llm":
+        return RkLlmBackend(
+            base_url=cfg.get("base_url", "http://127.0.0.1:8080"),
+            model=cfg.get("model", "buddy"),
+            api_key=cfg.get("api_key", ""),
+            endpoint=cfg.get("endpoint", ""),
+            api_style=cfg.get("api_style", "rkllm_demo"),
+        )
     return None
+
+
+def resolve_active_backend(local_cfg: dict) -> str:
+    requested = local_cfg.get("active_backend", "ollama")
+    backends = local_cfg.get("backends", {})
+
+    # Highest priority: explicit env override from deployment/runtime.
+    env_backend = os.getenv("BUDDY_LLM_BACKEND", "").strip()
+    if env_backend:
+        return env_backend
+
+    if requested != "auto":
+        return requested
+
+    arch = os.getenv("BUDDY_TARGET_ARCH", "").strip().lower()
+    device = os.getenv("BUDDY_TARGET_DEVICE", "").strip().lower()
+    if arch in ("arm64", "aarch64") and device == "npu" and "rk_llm" in backends:
+        return "rk_llm"
+
+    if "ollama" in backends:
+        return "ollama"
+    if "vllm" in backends:
+        return "vllm"
+    return next(iter(backends), "")
 
 
 @app.on_event("startup")
 async def startup():
     global router, memory_manager, config
     config = load_config()
+
     local_cfg = config.get("local", {})
+    active = resolve_active_backend(local_cfg)
+    backend_cfg = local_cfg.get("backends", {}).get(active, {})
     cloud_cfg = config.get("cloud", {})
 
-    local_backend = create_backend(local_cfg) if local_cfg else None
+    local_backend = create_backend(backend_cfg) if backend_cfg else None
     cloud_backend = None
     try:
         cloud_backend = create_backend(cloud_cfg) if cloud_cfg else None
@@ -82,7 +127,7 @@ async def startup():
         logger.info("[MEMORY] disabled (memory.enabled=false or no cloud backend)")
 
     logger.info(
-        f"LLM service ready: local={type(local_backend).__name__ if local_backend else 'None'}, "
+        f"LLM service ready: local={type(local_backend).__name__ if local_backend else 'None'}({active}), "
         f"cloud={type(cloud_backend).__name__ if cloud_backend else 'None'}"
     )
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-export LD_LIBRARY_PATH="$DIR/lib:$DIR/lib/sherpa:$DIR/lib/funasr:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="$DIR/lib/sherpa:$DIR/lib:$DIR/lib/funasr:${LD_LIBRARY_PATH:-}"
 
 if [[ -f "$DIR/etc/buddy.env" ]]; then
     set -a; source "$DIR/etc/buddy.env"; set +a

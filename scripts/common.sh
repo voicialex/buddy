@@ -138,6 +138,11 @@ ensure_venv() {
     fi
     # shellcheck disable=SC1091
     source "$venv_dir/bin/activate"
+    # Ensure pip is available (venv on some systems omits it)
+    if ! command -v pip &>/dev/null; then
+        log_step "Installing pip in venv..."
+        python3 -m ensurepip --upgrade 2>/dev/null || python3 -m pip --version || true
+    fi
     log_step "Installing Python dependencies..."
-    pip install --progress-bar on -r "$requirements" || true
+    python3 -m pip install --progress-bar on -r "$requirements" || true
 }

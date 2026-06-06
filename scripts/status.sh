@@ -7,9 +7,54 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
+resolve_rkllm_url() {
+    local llm_config="$SCRIPT_DIR/../services/llm/config.yaml"
+    local base_url="${BUDDY_RKLLM_URL_BASE:-http://127.0.0.1:8080}"
+    local endpoint="${BUDDY_RKLLM_ENDPOINT:-/rkllm_chat}"
+
+    if [[ -f "$llm_config" ]]; then
+        local parsed
+        parsed="$(
+            awk '
+                /^    rk_llm:[[:space:]]*$/ {in_rk=1; next}
+                in_rk && /^    [A-Za-z0-9_]+:[[:space:]]*$/ {in_rk=0}
+                in_rk && /^      base_url:[[:space:]]*/ {
+                    value=$0; sub(/^[^:]*:[[:space:]]*/, "", value); gsub(/"/, "", value); base=value
+                }
+                in_rk && /^      endpoint:[[:space:]]*/ {
+                    value=$0; sub(/^[^:]*:[[:space:]]*/, "", value); gsub(/"/, "", value); ep=value
+                }
+                END {if (base != "") print "BASE=" base; if (ep != "") print "ENDPOINT=" ep}
+            ' "$llm_config"
+        )"
+        if [[ -n "$parsed" ]]; then
+            # shellcheck disable=SC1090
+            source /dev/stdin <<<"$parsed"
+            [[ -n "${BASE:-}" ]] && base_url="$BASE"
+            [[ -n "${ENDPOINT:-}" ]] && endpoint="$ENDPOINT"
+        fi
+    fi
+
+    [[ "$endpoint" == /* ]] || endpoint="/$endpoint"
+    echo "${base_url}${endpoint}"
+}
+
+check_rkllm_ready() {
+    local url="$1"
+    local code
+    code="$(
+        curl -sS -o /dev/null -w "%{http_code}" --max-time 8 \
+            -H "Content-Type: application/json" \
+            -d '{"model":"buddy","messages":[{"role":"user","content":"ping"}],"stream":false}' \
+            "$url" 2>/dev/null || true
+    )"
+    [[ "$code" == "200" || "$code" == "503" ]]
+}
+
 # ── Service definitions ──
 # Format: name|url|port
 SERVICES=(
+    "RKLLM|$(resolve_rkllm_url)|8080"
     "Ollama|http://localhost:11434|11434"
     "LLM API|http://127.0.0.1:8002/health|8002"
     "ChatTTS|http://127.0.0.1:9880/docs|9880"
@@ -35,7 +80,18 @@ for entry in "${SERVICES[@]}"; do
     status=""
     detail=""
 
-    if check_port "$port"; then
+    if [[ "$name" == "RKLLM" ]]; then
+        if check_port "$port" && check_rkllm_ready "$url"; then
+            status="${COL_GREEN}running${COL_RESET}"
+            detail="$url ✓"
+        elif check_port "$port"; then
+            status="${COL_RED}stopped${COL_RESET}"
+            detail="$url (port up, api not ready)"
+        else
+            status="${COL_RED}stopped${COL_RESET}"
+            detail="$url"
+        fi
+    elif check_port "$port"; then
         status="${COL_GREEN}running${COL_RESET}"
         # Health check for HTTP services
         if [[ "$url" == http* ]]; then

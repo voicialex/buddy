@@ -87,6 +87,7 @@ for f in start_asr_server.sh start_tts_server.sh; do
 done
 [[ -f "$ROOT_DIR/scripts/start_llm_server.sh" ]] && cp "$ROOT_DIR/scripts/start_llm_server.sh" "$DEB_ROOT/opt/buddy/scripts/"
 [[ -f "$ROOT_DIR/scripts/common.sh" ]] && cp "$ROOT_DIR/scripts/common.sh" "$DEB_ROOT/opt/buddy/scripts/"
+[[ -f "$ROOT_DIR/scripts/status.sh" ]] && cp "$ROOT_DIR/scripts/status.sh" "$DEB_ROOT/opt/buddy/scripts/"
 
 # Python services
 mkdir -p "$DEB_ROOT/opt/buddy/services/llm" "$DEB_ROOT/opt/buddy/services/tts"
@@ -127,16 +128,25 @@ find "$DEB_ROOT/opt/buddy/scripts" -type f -exec chmod 755 {} \; 2>/dev/null || 
 
 # ─── Build .deb ──────────────────────────────────────────────────────────────
 mkdir -p "$OUTPUT_DIR"
-dpkg-deb --build "$DEB_ROOT" "$OUTPUT_DIR/buddy-robot_${VERSION}_amd64.deb"
+dpkg-deb --build "$DEB_ROOT" "$OUTPUT_DIR/buddy-robot_${VERSION}_amd64_${DEVICE}.deb"
 
 # ─── Models tarball ──────────────────────────────────────────────────────────
-MODELS_TAR="$OUTPUT_DIR/buddy-models_${VERSION}_all.tar"
+MODELS_TAR="$OUTPUT_DIR/buddy-models_${VERSION}_${DEVICE}.tar.gz"
 if [[ -f "$MODELS_TAR" ]]; then
   echo "[SKIP] Models tarball already exists: $(du -sh "$MODELS_TAR" | cut -f1)"
 elif [[ -d "$ROOT_DIR/models" ]]; then
-  tar cf "$MODELS_TAR" -C "$ROOT_DIR/models" --exclude="ollama" .
+  excludes=(--exclude="ollama" --exclude="rkllm")
+  # x86 never needs RKNN ASR models (arm64 NPU only)
+  excludes+=(--exclude="zipformer-rknn")
+  # Exclude redundant archive files (directories already extracted)
+  excludes+=(--exclude="*.tar" --exclude="*.tar.*" --exclude="*.tgz")
+  # gpu builds can also skip FunASR server models (uses GPU ORT directly)
+  if [[ "$DEVICE" == "gpu" ]]; then
+    excludes+=(--exclude="funasr-paraformer-zh-offline" --exclude="funasr-paraformer-zh-online" --exclude="funasr-vad")
+  fi
+  tar czf "$MODELS_TAR" -C "$ROOT_DIR/models" "${excludes[@]}" .
 fi
 
 echo ""
-echo "[OK] Package: $OUTPUT_DIR/buddy-robot_${VERSION}_amd64.deb ($(du -sh "$OUTPUT_DIR/buddy-robot_${VERSION}_amd64.deb" | cut -f1))"
+echo "[OK] Package: $OUTPUT_DIR/buddy-robot_${VERSION}_amd64_${DEVICE}.deb ($(du -sh "$OUTPUT_DIR/buddy-robot_${VERSION}_amd64_${DEVICE}.deb" | cut -f1))"
 [[ -f "$MODELS_TAR" ]] && echo "[OK] Models:  $MODELS_TAR ($(du -sh "$MODELS_TAR" | cut -f1))"

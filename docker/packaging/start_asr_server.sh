@@ -49,7 +49,7 @@ check_models() {
             echo "         - $m"
         done
         echo ""
-        echo "       Deploy models tarball: tar xf buddy-models_*.tar -C $BUDDY_DIR/"
+        echo "       Deploy models tarball: tar xzf buddy-models_*.tar.gz -C $BUDDY_DIR/"
         return 1
     fi
 }

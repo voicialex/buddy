@@ -50,7 +50,7 @@ RUN mkdir -p prebuilt/aarch64 && \
     ln -s /opt/prebuilt/sherpa-onnx prebuilt/aarch64/sherpa-onnx && \
     ln -s /opt/prebuilt/onnxruntime prebuilt/aarch64/onnxruntime && \
     ln -s /opt/prebuilt/opencv prebuilt/aarch64/opencv && \
-    if [ "$DEVICE" = "npu" ] && [ -d /opt/prebuilt/rknn ]; then \
+    if [ "$DEVICE" = "npu" ] && [ -d /opt/prebuilt/rknn/lib ]; then \
       ln -s /opt/prebuilt/rknn prebuilt/aarch64/rknn; \
     fi && \
     ln -s aarch64 prebuilt/current
@@ -83,6 +83,7 @@ RUN --mount=type=cache,target=/ccache \
 FROM ubuntu:22.04 AS package
 
 ARG VERSION
+ARG DEVICE=cpu
 WORKDIR /deb-root
 
 RUN mkdir -p opt/buddy/bin opt/buddy/lib opt/buddy/lib/funasr opt/buddy/lib/sherpa opt/buddy/models opt/buddy/params opt/buddy/etc \
@@ -132,7 +133,15 @@ RUN cp -fP /tmp/prebuilt/onnxruntime/lib/*.so* opt/buddy/lib/funasr/ 2>/dev/null
     cp -fP /tmp/prebuilt/funasr/lib/*.so* opt/buddy/lib/funasr/ 2>/dev/null || true
 
 # RKNN (npu builds only — librknnrt.so)
-RUN cp -fP /tmp/prebuilt/rknn/lib/*.so* opt/buddy/lib/ 2>/dev/null || true
+RUN if [ "$DEVICE" = "npu" ] && [ -d /tmp/prebuilt/rknn/lib ]; then \
+      cp -fP /tmp/prebuilt/rknn/lib/*.so* opt/buddy/lib/; \
+    fi
+
+# RKLLM runtime lib (flask_server.py loads via relative path lib/librkllmrt.so)
+RUN if [ "$DEVICE" = "npu" ] && [ -d /tmp/prebuilt/rkllm/lib ]; then \
+      mkdir -p opt/buddy/rkllm_server/lib && \
+      cp -fP /tmp/prebuilt/rkllm/lib/*.so* opt/buddy/rkllm_server/lib/; \
+    fi
 
 # Params
 COPY --from=build /workspace/output/install/buddy_app/share/buddy_app/params/ opt/buddy/params/
@@ -152,6 +161,11 @@ COPY docker/packaging/start_asr_server.sh opt/buddy/scripts/start_asr_server.sh
 COPY docker/packaging/start_tts_server.sh opt/buddy/scripts/start_tts_server.sh
 COPY scripts/start_llm_server.sh opt/buddy/scripts/start_llm_server.sh
 COPY scripts/common.sh opt/buddy/scripts/common.sh
+COPY scripts/status.sh opt/buddy/scripts/status.sh
+
+# RKLLM flask server (npu builds only)
+RUN if [ "$DEVICE" = "npu" ]; then mkdir -p opt/buddy/rkllm_server; fi
+COPY docker/rkllm_server/ opt/buddy/rkllm_server/
 COPY services/tts/server.py opt/buddy/services/tts/server.py
 COPY services/tts/requirements.txt opt/buddy/services/tts/requirements.txt
 COPY services/llm/ opt/buddy/services/llm/
@@ -161,10 +175,17 @@ RUN chmod 755 opt/buddy/run.sh opt/buddy/bin/buddy_main \
               opt/buddy/scripts/start_tts_server.sh \
               opt/buddy/scripts/start_llm_server.sh \
               opt/buddy/scripts/common.sh \
+              opt/buddy/scripts/status.sh \
               DEBIAN/postinst DEBIAN/prerm DEBIAN/postrm && \
     sed -i "s/__VERSION__/${VERSION}/" DEBIAN/control
 
-RUN mkdir -p /output && dpkg-deb --build /deb-root /output/buddy-robot_${VERSION}_arm64.deb
+RUN echo "BUDDY_TARGET_ARCH=arm64" >> opt/buddy/etc/buddy.env && \
+    echo "BUDDY_TARGET_DEVICE=${DEVICE}" >> opt/buddy/etc/buddy.env && \
+    if [ "${DEVICE}" = "npu" ]; then \
+      echo "BUDDY_LLM_BACKEND=rk_llm" >> opt/buddy/etc/buddy.env; \
+    fi
+
+RUN mkdir -p /output && dpkg-deb --build /deb-root /output/buddy-robot_${VERSION}_arm64_${DEVICE}.deb
 
 # ============================================================
 # Stage 5: Models tarball (no compression, fast packaging)
@@ -172,17 +193,26 @@ RUN mkdir -p /output && dpkg-deb --build /deb-root /output/buddy-robot_${VERSION
 FROM busybox AS models
 
 ARG VERSION
+ARG DEVICE=cpu
 
 WORKDIR /models-root
 COPY models/ .
 # Remove ollama (user pulls via ollama CLI on device)
 RUN rm -rf ollama/
+RUN rm -f *.tar* 2>/dev/null || true
 
-RUN mkdir -p /output && tar cf /output/buddy-models_${VERSION}_all.tar -C /models-root .
+# Device-specific model filtering: cpu doesn't need RKNN models
+RUN if [ "$DEVICE" != "npu" ]; then \
+      echo "[INFO] Excluding RKNN models (device=$DEVICE)"; \
+      rm -rf zipformer-rknn/; \
+      rm -rf rkllm/; \
+    fi
+
+RUN mkdir -p /output && tar czf /output/buddy-models_${VERSION}_${DEVICE}.tar.gz -C /models-root .
 
 # ============================================================
 # Export both artifacts
 # ============================================================
 FROM scratch AS export
 COPY --from=package /output/*.deb /
-COPY --from=models /output/*.tar /
+COPY --from=models /output/*.tar.gz /

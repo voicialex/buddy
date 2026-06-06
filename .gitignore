@@ -4,6 +4,7 @@ output/
 build/
 install/
 log/
+docs/
 __pycache__/
 prebuilt/*
 !prebuilt/README.md

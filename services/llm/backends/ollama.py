@@ -9,6 +9,20 @@ class OllamaBackend(LLMBackend):
     def __init__(self, url: str = "http://localhost:11434", model: str = "buddy"):
         self.url = url.rstrip("/")
         self.model = model
+        self._supports_thinking: bool | None = None
+
+    async def _check_thinking_support(self) -> bool:
+        if self._supports_thinking is not None:
+            return self._supports_thinking
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.post(f"{self.url}/api/show", json={"name": self.model})
+                resp.raise_for_status()
+                data = resp.json()
+                self._supports_thinking = "IsThinkSet" in data.get("template", "")
+        except Exception:
+            self._supports_thinking = False
+        return self._supports_thinking
 
     async def stream_chat(
         self,
@@ -16,7 +30,7 @@ class OllamaBackend(LLMBackend):
         system_prompt: str = "",
         image_base64: str = "",
     ) -> AsyncIterator[str]:
-        payload = self._build_payload(messages, system_prompt, stream=True)
+        payload = await self._build_payload(messages, system_prompt, stream=True)
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream("POST", f"{self.url}/api/chat", json=payload) as resp:
                 resp.raise_for_status()
@@ -33,7 +47,7 @@ class OllamaBackend(LLMBackend):
         messages: list[dict],
         system_prompt: str = "",
     ) -> str:
-        payload = self._build_payload(messages, system_prompt, stream=False)
+        payload = await self._build_payload(messages, system_prompt, stream=False)
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(f"{self.url}/api/chat", json=payload)
             resp.raise_for_status()
@@ -48,9 +62,12 @@ class OllamaBackend(LLMBackend):
         except Exception:
             return False
 
-    def _build_payload(self, messages: list[dict], system_prompt: str, stream: bool) -> dict:
+    async def _build_payload(self, messages: list[dict], system_prompt: str, stream: bool) -> dict:
         msgs = []
         if system_prompt:
             msgs.append({"role": "system", "content": system_prompt})
         msgs.extend(messages)
-        return {"model": self.model, "messages": msgs, "stream": stream}
+        payload = {"model": self.model, "messages": msgs, "stream": stream}
+        if await self._check_thinking_support():
+            payload["think"] = True
+        return payload
