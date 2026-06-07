@@ -1,0 +1,43 @@
+audio:
+  ros__parameters:
+    asr_cooldown_ms: 300
+    kws:
+      enable: false
+      model_dir: "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile"
+      model:
+        encoder: "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
+        decoder: "decoder-epoch-12-avg-2-chunk-16-left-64.onnx"
+        joiner: "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
+        tokens: "tokens.txt"
+      keywords_file: "keywords.txt"
+      threshold: 0.08
+      score: 2.2
+
+    # ASR: mode = "local" | "server"
+    #      engine = "auto" | "sherpa-onnx" | "zipformer-rknn"
+    #      alias: "native" (compat) -> zipformer-rknn
+    #      runtime = "auto" | "onnxruntime" | "rknnruntime"
+    asr:
+      mode: "local"
+      engine: "auto"
+      runtime: "auto"
+      server:
+        funasr:
+          url: "ws://127.0.0.1:10095"
+          mode: "online"
+      local:
+        sherpa:
+          model_dir: "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+          model:
+            encoder: "encoder-epoch-99-avg-1.int8.onnx"
+            decoder: "decoder-epoch-99-avg-1.onnx"
+            joiner: "joiner-epoch-99-avg-1.int8.onnx"
+            tokens: "tokens.txt"
+          decoding_method: "greedy_search"
+        native:
+          model_dir: "zipformer-rknn"
+          model:
+            encoder: "encoder.rknn"
+            decoder: "decoder.rknn"
+            joiner: "joiner.rknn"
+            tokens: "tokens.txt"

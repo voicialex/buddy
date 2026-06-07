@@ -31,7 +31,7 @@ echo "[INFO] Packaging buddy-robot_${VERSION}_amd64.deb (device=$DEVICE)"
 
 # ─── Clean and create structure ───────────────────────────────────────────────
 rm -rf "$DEB_ROOT"
-mkdir -p "$DEB_ROOT"/{opt/buddy/{bin,lib,lib/funasr,lib/sherpa,models,params,etc,scripts},lib/systemd/system,DEBIAN}
+mkdir -p "$DEB_ROOT"/{opt/buddy/{bin,lib,lib/sherpa,models,params,etc,scripts},lib/systemd/system,DEBIAN}
 
 # ─── Binary ──────────────────────────────────────────────────────────────────
 cp "$INSTALL_DIR/buddy_app/lib/buddy_app/buddy_main" "$DEB_ROOT/opt/buddy/bin/"
@@ -62,12 +62,6 @@ else
   cp -fP "$PREBUILT_DIR/onnxruntime/lib/"*.so* "$DEB_ROOT/opt/buddy/lib/" 2>/dev/null || true
 fi
 
-# ─── FunASR (isolated: uses its own ORT copy for independent process) ─────────
-cp -fP "$PREBUILT_DIR/onnxruntime/lib/"*.so* "$DEB_ROOT/opt/buddy/lib/funasr/" 2>/dev/null || true
-cp -f "$PREBUILT_DIR/funasr/bin/funasr-wss-server" "$DEB_ROOT/opt/buddy/bin/" 2>/dev/null || true
-cp -f "$PREBUILT_DIR/funasr/bin/funasr-wss-server-2pass" "$DEB_ROOT/opt/buddy/bin/" 2>/dev/null || true
-cp -fP "$PREBUILT_DIR/funasr/lib/"*.so* "$DEB_ROOT/opt/buddy/lib/funasr/" 2>/dev/null || true
-
 # ─── SentencePiece (GPU builds with MOSS-TTS only) ───────────────────────────
 if [[ "$DEVICE" == "gpu" && -d "$PREBUILT_DIR/sentencepiece/lib" ]]; then
   cp -fP "$PREBUILT_DIR/sentencepiece/lib/"*.so* "$DEB_ROOT/opt/buddy/lib/"
@@ -76,29 +70,28 @@ fi
 # ─── Params ──────────────────────────────────────────────────────────────────
 cp -rL "$INSTALL_DIR/buddy_app/share/buddy_app/params/"* "$DEB_ROOT/opt/buddy/params/" 2>/dev/null || true
 
-# ─── Scripts & service ────────────────────────────────────────────────────────
+# ─── Scripts ──────────────────────────────────────────────────────────────────
 # run.sh goes to root (entry point)
 [[ -f "$ROOT_DIR/docker/packaging/run.sh" ]] && cp "$ROOT_DIR/docker/packaging/run.sh" "$DEB_ROOT/opt/buddy/run.sh"
 # buddy.env goes to etc/
 [[ -f "$ROOT_DIR/docker/packaging/buddy.env" ]] && cp "$ROOT_DIR/docker/packaging/buddy.env" "$DEB_ROOT/opt/buddy/etc/buddy.env"
-# Other scripts to scripts/
-for f in start_asr_server.sh start_tts_server.sh; do
-  [[ -f "$ROOT_DIR/docker/packaging/$f" ]] && cp "$ROOT_DIR/docker/packaging/$f" "$DEB_ROOT/opt/buddy/scripts/"
-done
-[[ -f "$ROOT_DIR/scripts/start_llm_server.sh" ]] && cp "$ROOT_DIR/scripts/start_llm_server.sh" "$DEB_ROOT/opt/buddy/scripts/"
 [[ -f "$ROOT_DIR/scripts/common.sh" ]] && cp "$ROOT_DIR/scripts/common.sh" "$DEB_ROOT/opt/buddy/scripts/"
 [[ -f "$ROOT_DIR/scripts/status.sh" ]] && cp "$ROOT_DIR/scripts/status.sh" "$DEB_ROOT/opt/buddy/scripts/"
-
-# Python services
-mkdir -p "$DEB_ROOT/opt/buddy/services/llm" "$DEB_ROOT/opt/buddy/services/tts"
-cp -r "$ROOT_DIR/services/llm/"* "$DEB_ROOT/opt/buddy/services/llm/" 2>/dev/null || true
-cp -r "$ROOT_DIR/services/tts/"* "$DEB_ROOT/opt/buddy/services/tts/" 2>/dev/null || true
-# Exclude .venv from package
-rm -rf "$DEB_ROOT/opt/buddy/services/llm/.venv" "$DEB_ROOT/opt/buddy/services/tts/.venv"
-rm -rf "$DEB_ROOT/opt/buddy/services/llm/backends/__pycache__"
-
-# LLM startup script
 [[ -f "$ROOT_DIR/scripts/start_llm_server.sh" ]] && cp "$ROOT_DIR/scripts/start_llm_server.sh" "$DEB_ROOT/opt/buddy/scripts/"
+if [[ -d "$ROOT_DIR/services/llm" ]]; then
+  mkdir -p "$DEB_ROOT/opt/buddy/services/llm"
+  cp -r "$ROOT_DIR/services/llm/"* "$DEB_ROOT/opt/buddy/services/llm/"
+  rm -rf "$DEB_ROOT/opt/buddy/services/llm/.venv" \
+         "$DEB_ROOT/opt/buddy/services/llm/tests" \
+         "$DEB_ROOT/opt/buddy/services/llm/__pycache__" \
+         "$DEB_ROOT/opt/buddy/services/llm/backends/__pycache__"
+fi
+if [[ -d "$ROOT_DIR/docker/rkllm_server" ]]; then
+  mkdir -p "$DEB_ROOT/opt/buddy/rkllm_server"
+  cp -r "$ROOT_DIR/docker/rkllm_server/"* "$DEB_ROOT/opt/buddy/rkllm_server/"
+  rm -rf "$DEB_ROOT/opt/buddy/rkllm_server/.venv" \
+         "$DEB_ROOT/opt/buddy/rkllm_server/__pycache__"
+fi
 
 [[ -f "$ROOT_DIR/docker/packaging/buddy.service" ]] && \
   cp "$ROOT_DIR/docker/packaging/buddy.service" "$DEB_ROOT/lib/systemd/system/"
@@ -111,8 +104,8 @@ Architecture: amd64
 Maintainer: buddy-dev <dev@example.com>
 Depends: libasound2, libcurl4, libstdc++6, python3, python3-venv, curl
 Description: Buddy Robot - AI companion runtime (x86_64, device=${DEVICE})
- All-in-one package including audio pipeline, vision,
- brain state machine, and cloud inference client.
+ Core runtime package for buddy_main and direct dependencies.
+ Optional ASR/TTS/LLM services are packaged separately.
 EOF
 
 for f in postinst prerm postrm; do

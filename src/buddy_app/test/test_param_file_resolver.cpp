@@ -54,6 +54,44 @@ TEST_F(ParamFileResolverTest, ReturnsEmptyWhenBaseMissing) {
     EXPECT_TRUE(files.empty());
 }
 
+TEST_F(ParamFileResolverTest, AudioUsesSplitFilesInStableOrder) {
+    const fs::path device_path = params_dir() / "audio.device.yaml";
+    const fs::path asr_path = params_dir() / "audio.asr.yaml";
+    const fs::path tts_path = params_dir() / "audio.tts.yaml";
+    const fs::path webrtc_path = params_dir() / "audio.webrtc.yaml";
+
+    std::ofstream(device_path.string()) << "audio:\n";
+    std::ofstream(asr_path.string()) << "audio:\n";
+    std::ofstream(tts_path.string()) << "audio:\n";
+    std::ofstream(webrtc_path.string()) << "audio:\n";
+    const auto files = resolve_param_files(install_dir_, "audio");
+    ASSERT_EQ(files.size(), 4u);
+    EXPECT_EQ(files[0], device_path.string());
+    EXPECT_EQ(files[1], asr_path.string());
+    EXPECT_EQ(files[2], tts_path.string());
+    EXPECT_EQ(files[3], webrtc_path.string());
+}
+
+TEST_F(ParamFileResolverTest, AudioDoesNotFallbackToLegacyAudioYaml) {
+    const fs::path legacy_path = params_dir() / "audio.yaml";
+    std::ofstream(legacy_path.string()) << "audio:\n";
+
+    const auto files = resolve_param_files(install_dir_, "audio");
+    EXPECT_TRUE(files.empty());
+}
+
+TEST_F(ParamFileResolverTest, VisionUsesDeviceThenVisionYaml) {
+    const fs::path device_path = params_dir() / "vision.device.yaml";
+    const fs::path vision_path = params_dir() / "vision.yaml";
+    std::ofstream(device_path.string()) << "camera_emotion:\n";
+    std::ofstream(vision_path.string()) << "vision:\n";
+
+    const auto files = resolve_param_files(install_dir_, "vision");
+    ASSERT_EQ(files.size(), 2u);
+    EXPECT_EQ(files[0], device_path.string());
+    EXPECT_EQ(files[1], vision_path.string());
+}
+
 int main(int argc, char** argv) {
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

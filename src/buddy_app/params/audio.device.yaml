@@ -1,0 +1,13 @@
+audio:
+  ros__parameters:
+    models_dir: "models"
+    # List devices:  arecord -l (mic) / aplay -l (speaker)
+    # ALSA device naming: `plughw:CARD=<card_name>,DEV=0`
+    #   <card_name> comes from `arecord -l` / `aplay -l` output:
+    #     card 2: Device [USB PnP Sound Device]  →  CARD=Device
+    #   Use `plughw` (not `hw`) for automatic sample-rate conversion (16kHz).
+    # mic_device: "plughw:CARD=Headset,DEV=0"      # desktop headset
+    # speaker_device: "plughw:CARD=Headset,DEV=0"  # desktop headset
+    mic_device: "plughw:CARD=Device,DEV=0"         # rk3588 USB PnP Sound Device
+    speaker_device: "plughw:CARD=Device,DEV=0"     # rk3588 USB PnP Sound Device
+    sample_rate: 16000

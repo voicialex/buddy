@@ -1,0 +1,61 @@
+audio:
+  ros__parameters:
+    # TTS: mode = "local" | "server"
+    #      engine = "auto" | "sherpa-onnx" | "melo-rknn" | "moss-onnx"
+    #      alias: "native" (compat) -> melo-rknn (when runtime=rknnruntime) or moss-onnx
+    #      runtime = "auto" | "onnxruntime" | "rknnruntime"
+    tts:
+      mode: "local"
+      engine: "auto"
+      runtime: "auto"
+      server:
+        chattts:
+          url: "http://127.0.0.1:9880/tts"
+      local:
+        sherpa:
+          model_type: "melo"  # kokoro | vits | melo
+          # # Kokoro (default) — multi-voice, expressive, zh+en
+          # model_dir: "kokoro-int8-multi-lang-v1_1"
+          # model: "model.int8.onnx"
+          # tokens: "tokens.txt"
+          # voices: "voices.bin"
+          # lexicon: "lexicon-zh.txt"
+          # dict_dir: "dict"
+          # lang: "zh"
+          # data_dir: "espeak-ng-data"
+          # rule_fsts: "number-zh.fst,phone-zh.fst,date-zh.fst"
+          # # VITS aishell3 (backup) — 174 speakers, zh only
+          # model_type: "vits"
+          # model_dir: "vits-icefall-zh-aishell3"
+          # model: "model.onnx"
+          # tokens: "tokens.txt"
+          # voices: ""
+          # lexicon: "lexicon.txt"
+          # data_dir: ""
+          # rule_fsts: "number.fst,phone.fst,date.fst"
+          # MeloTTS — single female voice, zh+en
+          model_dir: "vits-melo-tts-zh_en"
+          model: "model.onnx"
+          tokens: "tokens.txt"
+          voices: ""
+          lexicon: "lexicon.txt"
+          data_dir: ""
+          dict_dir: "dict"
+          rule_fsts: "number.fst,phone.fst,date.fst,new_heteronym.fst"
+          sid: 0
+          speed: 1.0
+        melo:
+          # Melo RKNN (rk3588): set tts.engine="melo-rknn" and tts.runtime="rknnruntime"
+          model_dir: "melo-tts-rknn"
+          speaker: ""
+          rank: "rank3"
+          bert_mode: "rknn"
+          speed: 1.0
+          sdp_ratio: 0.0
+          noise_scale: 0.6
+          noise_scale_w: 0.8
+        moss:
+          model_dir: "moss-tts-nano"
+          voice: ""
+          max_new_frames: 375
+          seed: 1234

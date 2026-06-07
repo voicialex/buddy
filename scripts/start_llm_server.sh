@@ -27,9 +27,8 @@ fi
 export LD_LIBRARY_PATH="$PROJECT_DIR/lib:$PROJECT_DIR/lib/sherpa:$PROJECT_DIR/lib/funasr:${LD_LIBRARY_PATH:-}"
 
 # ── Ollama config ──
-OLLAMA_MODEL_DIR="$PROJECT_DIR/models/ollama"
 OLLAMA_LOG="/tmp/buddy-ollama.log"
-OLLAMA_MODEL="buddy"
+OLLAMA_MODEL="${BUDDY_OLLAMA_MODEL:-}"
 OLLAMA_URL="http://localhost:11434"
 OLLAMA_BACKEND="${OLLAMA_LLM_LIBRARY:-auto}"  # auto | cpu | cuda_v12
 
@@ -76,6 +75,62 @@ resolve_local_backend_mode() {
     else
         echo "ollama"
     fi
+}
+
+resolve_ollama_model() {
+    if [[ -n "${BUDDY_OLLAMA_MODEL:-}" ]]; then
+        echo "$BUDDY_OLLAMA_MODEL"
+        return 0
+    fi
+    local local_llm_yaml=""
+    if [[ -f "$PROJECT_DIR/params/local_llm.yaml" ]]; then
+        local_llm_yaml="$PROJECT_DIR/params/local_llm.yaml"
+    elif [[ -f "$PROJECT_DIR/src/buddy_app/params/local_llm.yaml" ]]; then
+        local_llm_yaml="$PROJECT_DIR/src/buddy_app/params/local_llm.yaml"
+    fi
+
+    if [[ -n "$local_llm_yaml" ]]; then
+        local local_model
+        local_model="$(
+            awk '
+                /^local_llm:[[:space:]]*$/ {in_root=1; next}
+                in_root && /^[^[:space:]].*:[[:space:]]*$/ {in_root=0}
+                in_root && /^[[:space:]]+ros__parameters:[[:space:]]*$/ {in_param=1; next}
+                in_param && /^[[:space:]]+[A-Za-z0-9_]+:[[:space:]]*$/ && $1 !~ /model_name:/ {next}
+                in_param && /^[[:space:]]+model_name:[[:space:]]*/ {
+                    value=$0; sub(/^[^:]*:[[:space:]]*/, "", value); gsub(/"/, "", value); print value; exit
+                }
+            ' "$local_llm_yaml" 2>/dev/null
+        )"
+        if [[ -n "$local_model" ]]; then
+            echo "$local_model"
+            return 0
+        fi
+    fi
+
+    if [[ -f "$LLM_CONFIG" ]]; then
+        local parsed
+        parsed="$(
+            awk '
+                /^  backends:[[:space:]]*$/ {in_backends=1; next}
+                in_backends && /^  [A-Za-z0-9_]+:[[:space:]]*$/ {in_backends=0}
+                in_backends && /^    ollama:[[:space:]]*$/ {in_ollama=1; next}
+                in_ollama && /^    [A-Za-z0-9_]+:[[:space:]]*$/ {in_ollama=0}
+                in_ollama && /^      model:[[:space:]]*/ {
+                    value=$0
+                    sub(/^[^:]*:[[:space:]]*/, "", value)
+                    gsub(/"/, "", value)
+                    print value
+                    exit
+                }
+            ' "$LLM_CONFIG"
+        )"
+        if [[ -n "$parsed" ]]; then
+            echo "$parsed"
+            return 0
+        fi
+    fi
+    echo "qwen2.5:7b"
 }
 
 resolve_rkllm_url() {
@@ -242,8 +297,6 @@ start_ollama() {
     fi
 
     log_step "Starting Ollama server (backend=$backend) ..."
-    mkdir -p "$OLLAMA_MODEL_DIR"
-    export OLLAMA_MODELS="$OLLAMA_MODEL_DIR"
     : > "$OLLAMA_LOG"
     OLLAMA_LLM_LIBRARY="$backend" nohup ollama serve > "$OLLAMA_LOG" 2>&1 &
     wait_for_ollama "Timeout starting Ollama. Check $OLLAMA_LOG"
@@ -327,13 +380,15 @@ ensure_local_backend_runtime() {
     case "$local_backend" in
         ollama)
             install_ollama
-            mkdir -p "$OLLAMA_MODEL_DIR"
-            export OLLAMA_MODELS="$OLLAMA_MODEL_DIR"
             start_ollama
             pull_ollama_model
             ;;
         rk_llm)
-            start_rkllm
+            if [[ "${BUDDY_RKLLM_ON_DEMAND:-1}" == "1" ]]; then
+                log_skip "RKLLM server (on-demand)"
+            else
+                start_rkllm
+            fi
             ;;
         *)
             log_skip "No managed runtime for backend=$local_backend"
@@ -361,7 +416,7 @@ start_llm_service() {
     : > "$LLM_LOG"
     nohup python3 "$SERVICE_DIR/server.py" > "$LLM_LOG" 2>&1 &
 
-    if wait_for_ready "check_http http://127.0.0.1:$LLM_PORT/health" 15 "LLM server"; then
+    if wait_for_ready "check_http http://127.0.0.1:$LLM_PORT/ready" 30 "LLM server"; then
         log_ok "LLM server ready"
         return 0
     fi
@@ -377,7 +432,18 @@ stop_llm_service() {
 # Main
 # ════════════════════════════════════════════════════════════════
 
+OLLAMA_MODEL="${OLLAMA_MODEL:-$(resolve_ollama_model)}"
+
 case "${1:-start}" in
+    start-rkllm)
+        log_stage "RKLLM Service"
+        start_rkllm
+        exit 0
+        ;;
+    stop-rkllm)
+        stop_rkllm
+        exit 0
+        ;;
     stop)
         stop_llm_service
         stop_ollama
@@ -428,7 +494,7 @@ case "${1:-start}" in
         fi
         ;;
     *)
-        echo "Usage: $0 [start|stop|restart|install|-f]"
+        echo "Usage: $0 [start|stop|restart|install|-f|start-rkllm|stop-rkllm]"
         exit 1
         ;;
 esac

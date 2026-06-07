@@ -7,7 +7,7 @@
 #include <queue>
 #include <thread>
 
-#include "buddy_audio/asr_backend.hpp"
+#include "buddy_audio/asr/asr_backend.hpp"
 
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;

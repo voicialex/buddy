@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "buddy_brain/emotion_trigger.hpp"
+#include "buddy_brain/asr_filter.hpp"
 #include "buddy_brain/sentence_segmenter.hpp"
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
@@ -88,7 +89,9 @@ private:
     bool has_tts_done_timestamp_{false};
     double followup_echo_guard_seconds_{8.0};
     int followup_echo_guard_min_chars_{4};
+    int voice_capture_timeout_ms_{1200};
     std::vector<std::string> wake_phrase_fallbacks_;
+    std::unique_ptr<AsrFilter> asr_filter_;
 
     // Single unified action client
     rclcpp_action::Client<Inference>::SharedPtr llm_client_;
@@ -104,5 +107,6 @@ private:
     rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr tts_done_sub_;
 
     rclcpp::Client<buddy_interfaces::srv::CaptureImage>::SharedPtr capture_client_;
+    rclcpp::CallbackGroup::SharedPtr capture_client_group_;
     std::shared_future<buddy_interfaces::srv::CaptureImage::Response::SharedPtr> capture_future_;
 };

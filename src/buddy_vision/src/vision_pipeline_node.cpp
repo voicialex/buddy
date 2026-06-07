@@ -29,13 +29,33 @@ CallbackReturn VisionPipelineNode::on_configure(const rclcpp_lifecycle::State&) 
     }
 
     if (use_retinaface) {
-        auto model = std::make_unique<FaceEmotionModel>(get_logger(), runtime);
-        if (model->load(face_model_dir)) {
+        auto try_load_retinaface = [&](const std::string& selected_runtime) -> bool {
+            auto model = std::make_unique<FaceEmotionModel>(get_logger(), selected_runtime);
+            if (!model->load(face_model_dir)) {
+                return false;
+            }
             emotion_model_ = std::move(model);
-            RCLCPP_INFO(get_logger(), "Using RetinaFace + AffectNet7 emotion pipeline");
-        } else {
-            RCLCPP_WARN(get_logger(), "RetinaFace load failed, falling back to Haar");
-            use_retinaface = false;
+            RCLCPP_INFO(get_logger(),
+                        "Using RetinaFace + AffectNet7 emotion pipeline (runtime=%s)",
+                        selected_runtime.c_str());
+            return true;
+        };
+
+        if (!try_load_retinaface(runtime)) {
+            // Typical board issue: RKNN model built for a different chip (e.g. rk3576 on rk3588).
+            // In that case, retry with ONNX before falling back to legacy Haar pipeline.
+            if (runtime == "auto" || runtime == "rknnruntime") {
+                RCLCPP_WARN(get_logger(), "RetinaFace load with runtime=%s failed, retrying ONNX fallback", runtime.c_str());
+                if (try_load_retinaface("onnxruntime")) {
+                    use_retinaface = true;
+                } else {
+                    RCLCPP_WARN(get_logger(), "RetinaFace ONNX fallback failed, falling back to Haar");
+                    use_retinaface = false;
+                }
+            } else {
+                RCLCPP_WARN(get_logger(), "RetinaFace load failed, falling back to Haar");
+                use_retinaface = false;
+            }
         }
     }
 
@@ -49,9 +69,15 @@ CallbackReturn VisionPipelineNode::on_configure(const rclcpp_lifecycle::State&) 
     // Publishers
     emotion_pub_ = create_publisher<buddy_interfaces::msg::EmotionResult>("/vision/emotion/result", 10);
 
+    // Split callbacks into dedicated groups to avoid service starvation
+    // when inference callback is busy.
+    sub_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    timer_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    service_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+
     // Subscriptions (raw sensor_msgs/Image)
     rclcpp::SubscriptionOptions sub_opts;
-    sub_opts.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    sub_opts.callback_group = sub_callback_group_;
 
     emotion_sub_ = create_subscription<sensor_msgs::msg::Image>(
         "/camera_emotion/image_raw",
@@ -71,14 +97,18 @@ CallbackReturn VisionPipelineNode::on_configure(const rclcpp_lifecycle::State&) 
         [this](const std::shared_ptr<buddy_interfaces::srv::CaptureImage::Request> req,
                std::shared_ptr<buddy_interfaces::srv::CaptureImage::Response> res) {
             handle_capture("emotion", req, res);
-        });
+        },
+        rmw_qos_profile_services_default,
+        service_callback_group_);
 
     capture_srvs_["game"] = create_service<buddy_interfaces::srv::CaptureImage>(
         "/vision/game/capture",
         [this](const std::shared_ptr<buddy_interfaces::srv::CaptureImage::Request> req,
                std::shared_ptr<buddy_interfaces::srv::CaptureImage::Response> res) {
             handle_capture("game", req, res);
-        });
+        },
+        rmw_qos_profile_services_default,
+        service_callback_group_);
 
     return CallbackReturn::SUCCESS;
 }
@@ -87,7 +117,8 @@ CallbackReturn VisionPipelineNode::on_activate(const rclcpp_lifecycle::State&) {
     RCLCPP_INFO(get_logger(), "VisionPipelineNode: activating");
 
     int interval_ms = this->get_parameter_or("inference_interval_ms", 500);
-    inference_timer_ = create_wall_timer(std::chrono::milliseconds(interval_ms), [this]() { do_inference(); });
+    inference_timer_ =
+        create_wall_timer(std::chrono::milliseconds(interval_ms), [this]() { do_inference(); }, timer_callback_group_);
 
     return CallbackReturn::SUCCESS;
 }
@@ -104,6 +135,9 @@ CallbackReturn VisionPipelineNode::on_cleanup(const rclcpp_lifecycle::State&) {
     game_sub_.reset();
     emotion_pub_.reset();
     capture_srvs_.clear();
+    sub_callback_group_.reset();
+    timer_callback_group_.reset();
+    service_callback_group_.reset();
     inference_timer_.reset();
     emotion_model_.reset();
     latest_emotion_frame_.reset();
@@ -165,7 +199,11 @@ void VisionPipelineNode::do_inference() {
     auto result = emotion_model_->inference(cv_ptr->image);
 
     if (result.label != last_label_ || std::abs(result.confidence - last_confidence_) > 0.05f) {
-        RCLCPP_INFO(get_logger(), "[emotion] %s (%.2f)", result.label.c_str(), result.confidence);
+        if (result.label == "Unknown" && result.confidence <= 1e-4f) {
+            RCLCPP_INFO(get_logger(), "[emotion] no face detected in current frame");
+        } else {
+            RCLCPP_INFO(get_logger(), "[emotion] %s (%.2f)", result.label.c_str(), result.confidence);
+        }
         last_label_ = result.label;
         last_confidence_ = result.confidence;
 

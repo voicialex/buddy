@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
-#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -24,15 +23,6 @@ std::string trim(const std::string& s) {
     if (begin == std::string::npos) return "";
     const auto end = s.find_last_not_of(" \t\r\n");
     return s.substr(begin, end - begin + 1);
-}
-
-std::string normalize_for_echo_match(const std::string& text) {
-    std::string out;
-    out.reserve(text.size());
-    for (unsigned char c : text) {
-        if (!std::isspace(c)) out.push_back(static_cast<char>(c));
-    }
-    return out;
 }
 
 WakePhraseLoadResult load_wake_phrases_from_keywords_file() {
@@ -73,6 +63,16 @@ WakePhraseLoadResult load_wake_phrases_from_keywords_file() {
     }
     return result;
 }
+
+std::unique_ptr<AsrFilter> make_asr_filter(const std::string& strategy, double guard_seconds, int min_chars) {
+    if (strategy == "echo_substring") {
+        return std::make_unique<EchoSubstringAsrFilter>(guard_seconds, min_chars);
+    }
+    if (strategy == "none") {
+        return nullptr;
+    }
+    return {};
+}
 }  // namespace
 
 BrainNode::BrainNode(const rclcpp::NodeOptions& options) : rclcpp_lifecycle::LifecycleNode("brain", options) {}
@@ -88,8 +88,10 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State&) {
     declare_parameter("emotion_trigger.duration_seconds", 3.0);
     declare_parameter("emotion_trigger.cooldown_seconds", 60.0);
     declare_parameter("voice_trigger.attach_image", true);
+    declare_parameter("voice_trigger.capture_timeout_ms", 1200);
     declare_parameter("voice_trigger.followup_echo_guard_seconds", 8.0);
     declare_parameter("voice_trigger.followup_echo_guard_min_chars", 4);
+    declare_parameter("voice_trigger.asr_filter.strategy", "echo_substring");
     declare_parameter("session_timeout_seconds", 60.0);
     declare_parameter("speaking_watchdog_seconds", 60.0);
 
@@ -98,8 +100,19 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State&) {
     watchdog_timeout_ms_ = static_cast<int>(get_parameter("speaking_watchdog_seconds").as_double() * 1000);
     emotion_trigger_enabled_ = get_parameter("emotion_trigger.enabled").as_bool();
     voice_attach_image_ = get_parameter("voice_trigger.attach_image").as_bool();
+    voice_capture_timeout_ms_ = get_parameter("voice_trigger.capture_timeout_ms").as_int();
+    if (voice_capture_timeout_ms_ < 0) voice_capture_timeout_ms_ = 0;
     followup_echo_guard_seconds_ = get_parameter("voice_trigger.followup_echo_guard_seconds").as_double();
     followup_echo_guard_min_chars_ = get_parameter("voice_trigger.followup_echo_guard_min_chars").as_int();
+    const std::string asr_filter_strategy = get_parameter("voice_trigger.asr_filter.strategy").as_string();
+    asr_filter_ = make_asr_filter(asr_filter_strategy, followup_echo_guard_seconds_, followup_echo_guard_min_chars_);
+    if (asr_filter_strategy != "none" && !asr_filter_) {
+        RCLCPP_ERROR(get_logger(),
+                     "Invalid voice_trigger.asr_filter.strategy='%s'. Allowed: echo_substring | none",
+                     asr_filter_strategy.c_str());
+        return CallbackReturn::ERROR;
+    }
+    RCLCPP_INFO(get_logger(), "ASR filter strategy: %s", asr_filter_strategy.c_str());
 
     const WakePhraseLoadResult wake_phrase_load = load_wake_phrases_from_keywords_file();
     wake_phrase_fallbacks_ = wake_phrase_load.phrases;
@@ -153,7 +166,13 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State&) {
     tts_done_sub_ = create_subscription<std_msgs::msg::Empty>(
         "/audio/tts_done", 10, std::bind(&BrainNode::on_tts_done, this, std::placeholders::_1));
 
-    capture_client_ = create_client<buddy_interfaces::srv::CaptureImage>("/vision/game/capture");
+    // Keep capture client callbacks off the default mutually-exclusive group.
+    // Otherwise waiting for capture future in ASR callback can starve service response handling.
+    capture_client_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    capture_client_ = create_client<buddy_interfaces::srv::CaptureImage>(
+        "/vision/game/capture",
+        rmw_qos_profile_services_default,
+        capture_client_group_);
 
     return CallbackReturn::SUCCESS;
 }
@@ -179,6 +198,7 @@ CallbackReturn BrainNode::on_cleanup(const rclcpp_lifecycle::State&) {
     emotion_sub_.reset();
     tts_done_sub_.reset();
     capture_client_.reset();
+    capture_client_group_.reset();
     history_.clear();
     segmenter_.reset();
     sentence_index_ = 0;
@@ -233,18 +253,22 @@ void BrainNode::on_asr_text(const std_msgs::msg::String& msg) {
         }
     }
 
-    // Echo guard
-    if (state_ == State::IDLE && has_active_session && has_tts_done_timestamp_ && !last_assistant_response_.empty()) {
-        const double elapsed =
-            std::chrono::duration<double>(std::chrono::steady_clock::now() - last_tts_done_at_).count();
-        if (elapsed >= 0.0 && elapsed <= followup_echo_guard_seconds_) {
-            const std::string asr_norm = normalize_for_echo_match(msg.data);
-            const std::string last_norm = normalize_for_echo_match(last_assistant_response_);
-            if (static_cast<int>(asr_norm.size()) >= followup_echo_guard_min_chars_ &&
-                last_norm.find(asr_norm) != std::string::npos) {
-                RCLCPP_INFO(get_logger(), "ASR echo filtered (elapsed=%.2fs)", elapsed);
-                return;
-            }
+    // ASR noise filter strategy (replaceable)
+    if (asr_filter_) {
+        const double elapsed = has_tts_done_timestamp_
+            ? std::chrono::duration<double>(std::chrono::steady_clock::now() - last_tts_done_at_).count()
+            : -1.0;
+        AsrFilterContext filter_ctx{};
+        filter_ctx.is_idle = (state_ == State::IDLE);
+        filter_ctx.has_active_session = has_active_session;
+        filter_ctx.has_tts_done_timestamp = has_tts_done_timestamp_;
+        filter_ctx.elapsed_since_tts_done_sec = elapsed;
+        filter_ctx.last_assistant_response = last_assistant_response_;
+        std::string reason;
+        if (asr_filter_->should_filter(msg.data, filter_ctx, &reason)) {
+            if (reason.empty()) reason = "ASR filtered by active noise strategy";
+            RCLCPP_INFO(get_logger(), "%s", reason.c_str());
+            return;
         }
     }
 
@@ -399,14 +423,17 @@ void BrainNode::request_inference(const std::string& trigger_type, const std::st
 
     // Attach image (future was kicked off in on_asr_text, just wait for result)
     if (capture_future_.valid()) {
-        auto status = capture_future_.wait_for(std::chrono::milliseconds(500));
+        auto status = capture_future_.wait_for(std::chrono::milliseconds(voice_capture_timeout_ms_));
         if (status == std::future_status::ready) {
             auto res = capture_future_.get();
             if (res && !res->image.data.empty()) {
                 goal.image = res->image;
             }
         } else {
-            RCLCPP_WARN(get_logger(), "Image capture timed out, proceeding without image");
+            RCLCPP_WARN(get_logger(),
+                        "Image capture timed out (%dms), proceeding without image (camera service ready=%s)",
+                        voice_capture_timeout_ms_,
+                        capture_client_ && capture_client_->service_is_ready() ? "yes" : "no");
         }
         capture_future_ = {};
     }

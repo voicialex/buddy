@@ -14,8 +14,8 @@ log_stage() {
 }
 
 log_step()  { echo "  [..] $1"; }
-log_ok()    { echo "  [ok] $1"; }
-log_skip()  { echo "  [--] $1 (already installed)"; }
+log_ok()    { echo "  [OK] $1"; }
+log_skip()  { echo "  [OK] $1 (already installed)"; }
 log_err()   { echo "  [!!] $1"; }
 
 # ── Hardware detection ──
@@ -128,6 +128,8 @@ wait_for_ready() {
 ensure_venv() {
     local venv_dir="$1"
     local requirements="$2"
+    local req_hash=""
+    local state_file="$venv_dir/.requirements.sha256"
 
     if [ ! -d "$venv_dir" ]; then
         log_step "Creating Python venv at $venv_dir ..."
@@ -143,6 +145,18 @@ ensure_venv() {
         log_step "Installing pip in venv..."
         python3 -m ensurepip --upgrade 2>/dev/null || python3 -m pip --version || true
     fi
-    log_step "Installing Python dependencies..."
-    python3 -m pip install --progress-bar on -r "$requirements" || true
+
+    if command -v sha256sum >/dev/null 2>&1; then
+        req_hash="$(sha256sum "$requirements" | awk '{print $1}')"
+    else
+        req_hash="$(cksum "$requirements" | awk '{print $1":"$2}')"
+    fi
+
+    if [ "${BUDDY_FORCE_PIP_SYNC:-0}" = "1" ] || [ ! -f "$state_file" ] || [ "$(cat "$state_file" 2>/dev/null || true)" != "$req_hash" ]; then
+        log_step "Installing Python dependencies..."
+        python3 -m pip install --progress-bar on -r "$requirements" || true
+        echo "$req_hash" > "$state_file"
+    else
+        log_skip "Python dependencies"
+    fi
 }

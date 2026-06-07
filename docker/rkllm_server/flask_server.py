@@ -193,7 +193,7 @@ def callback_impl(result, userdata, state):
         global_state = state
         global_text += result.contents.text.decode('utf-8')
     return 0
-
+    
 
 # Connect the callback function between the Python side and the C++ side
 callback_type = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.POINTER(RKLLMResult), ctypes.c_void_p, ctypes.c_int)
@@ -251,15 +251,15 @@ class RKLLM(object):
         self.rkllm_run = rkllm_lib.rkllm_run
         self.rkllm_run.argtypes = [RKLLM_Handle_t, ctypes.POINTER(RKLLMInput), ctypes.POINTER(RKLLMInferParam), ctypes.c_void_p]
         self.rkllm_run.restype = ctypes.c_int
-
+        
         self.set_chat_template = rkllm_lib.rkllm_set_chat_template
         self.set_chat_template.argtypes = [RKLLM_Handle_t, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
         self.set_chat_template.restype = ctypes.c_int
-
+        
         self.set_function_tools_ = rkllm_lib.rkllm_set_function_tools
         self.set_function_tools_.argtypes = [RKLLM_Handle_t, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
         self.set_function_tools_.restype = ctypes.c_int
-
+        
         # system_prompt = "<|im_start|>system You are a helpful assistant. <|im_end|>"
         # prompt_prefix = "<|im_start|>user"
         # prompt_postfix = "<|im_end|><|im_start|>assistant"
@@ -268,7 +268,7 @@ class RKLLM(object):
         self.rkllm_destroy = rkllm_lib.rkllm_destroy
         self.rkllm_destroy.argtypes = [RKLLM_Handle_t]
         self.rkllm_destroy.restype = ctypes.c_int
-
+        
         self.rkllm_abort = rkllm_lib.rkllm_abort
 
         rkllm_lora_params = None
@@ -286,7 +286,7 @@ class RKLLM(object):
             rkllm_load_lora(self.handle, ctypes.byref(lora_adapter))
             rkllm_lora_params = RKLLMLoraParam()
             rkllm_lora_params.lora_adapter_name = ctypes.c_char_p((lora_adapter_name).encode('utf-8'))
-
+        
         self.rkllm_infer_params = RKLLMInferParam()
         ctypes.memset(ctypes.byref(self.rkllm_infer_params), 0, ctypes.sizeof(RKLLMInferParam))
         self.rkllm_infer_params.mode = RKLLMInferMode.RKLLM_INFER_GENERATE
@@ -301,9 +301,9 @@ class RKLLM(object):
             rkllm_load_prompt_cache.argtypes = [RKLLM_Handle_t, ctypes.c_char_p]
             rkllm_load_prompt_cache.restype = ctypes.c_int
             rkllm_load_prompt_cache(self.handle, ctypes.c_char_p((prompt_cache_path).encode('utf-8')))
-
+        
         self.tools = None
-
+            
     def set_function_tools(self, system_prompt, tools, tool_response_str):
         if self.tools is None or not self.tools == tools:
             self.tools = tools
@@ -318,10 +318,10 @@ class RKLLM(object):
         rkllm_input.input_data.prompt_input = ctypes.c_char_p(prompt.encode('utf-8'))
         self.rkllm_run(self.handle, ctypes.byref(rkllm_input), ctypes.byref(self.rkllm_infer_params), None)
         return
-
+    
     def abort(self):
         return self.rkllm_abort(self.handle)
-
+    
     def release(self):
         self.rkllm_destroy(self.handle)
 
@@ -380,7 +380,7 @@ if __name__ == "__main__":
         # If the server is in a blocking state, return a specific response.
         if is_blocking or global_state==0:
             return jsonify({'status': 'error', 'message': 'RKLLM_Server is busy! Maybe you can try again later.'}), 503
-
+        
         lock.acquire()
         try:
             # Set the server to a blocking state.
@@ -412,7 +412,7 @@ if __name__ == "__main__":
                     enable_thinking = data.get('enable_thinking')
                     TOOLS = data.get('tools')
                     print("Received messages:", messages)
-
+                    
                     input_prompt = []
                     for index, message in enumerate(messages):
 
@@ -422,7 +422,7 @@ if __name__ == "__main__":
                             if index >= 1:
                                 print('skip recevied_messages')
                                 continue
-
+                        
                         if message['role'] == 'system':
                             system_prompt = message['content']
                             print('skip system messages')
@@ -431,14 +431,14 @@ if __name__ == "__main__":
                         if message['role'] == 'assistant':
                             print('skip assistant messages')
                             continue
-
+                        
                         if message['role'] == 'tool':
                             if not isinstance(input_prompt, list):
                                 input_prompt = []
                             input_prompt.append(message['content'])
                             if index < len(messages) - 1:
                                 continue
-
+                            
                         if message['role'] == 'user':
                             input_prompt = message['content']
                         elif message['role'] == 'tool':
@@ -446,9 +446,9 @@ if __name__ == "__main__":
                             recevied_messages.clear()
                         else:
                             print("role setting error")
-
+                            
                         rkllm_output = ""
-
+                        
                         # Create a thread for model inference.
                         if TOOLS is not None:
                             rkllm_model.set_function_tools(system_prompt=system_prompt, tools=json.dumps(TOOLS),  tool_response_str="tool_response")
@@ -464,7 +464,7 @@ if __name__ == "__main__":
 
                             model_thread.join(timeout=0.005)
                             model_thread_finished = not model_thread.is_alive()
-
+                    
                         rkllm_responses["choices"].append(
                             {"index": index,
                             "message": {
@@ -481,7 +481,7 @@ if __name__ == "__main__":
                     enable_thinking = data.get('enable_thinking')
                     TOOLS = data.get('tools')
                     print("Received messages:", messages)
-
+                    
                     input_prompt = []
                     for index, message in enumerate(messages):
                         # print(recevied_messages)
@@ -491,7 +491,7 @@ if __name__ == "__main__":
                             if index >= 1:
                                 print('skip recevied_messages')
                                 continue
-
+                        
                         if message['role'] == 'system':
                             system_prompt = message['content']
                             print('skip system messages')
@@ -500,14 +500,14 @@ if __name__ == "__main__":
                         if message['role'] == 'assistant':
                             print('skip assistant messages')
                             continue
-
+                        
                         if message['role'] == 'tool':
                             if not isinstance(input_prompt, list):
                                 input_prompt = []
                             input_prompt.append(message['content'])
                             if index < len(messages) - 1:
                                 continue
-
+                            
                         if message['role'] == 'user':
                             input_prompt = message['content']
                         elif message['role'] == 'tool':
@@ -515,13 +515,13 @@ if __name__ == "__main__":
                             recevied_messages.clear()
                         else:
                             print("role setting error")
-
+                            
                         role = message.get('role')
                         rkllm_output = ""
-
+                        
                         if TOOLS is not None:
                             rkllm_model.set_function_tools(system_prompt=system_prompt, tools=json.dumps(TOOLS),  tool_response_str="tool_response")
-
+                        
                         def generate():
                             model_thread = threading.Thread(target=rkllm_model.run, args=(role, enable_thinking, input_prompt, ))
                             model_thread.start()
@@ -552,7 +552,7 @@ if __name__ == "__main__":
         finally:
             lock.release()
             is_blocking = False
-
+        
     # Start the Flask application.
     # app.run(host='0.0.0.0', port=8080)
     app.run(host='0.0.0.0', port=8080, threaded=True, debug=False)

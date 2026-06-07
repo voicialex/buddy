@@ -38,8 +38,10 @@ local:
   backends:
     ollama:
       backend: "ollama"
-      model: "qwen3:4b"
+      model: "qwen2.5:7b"
       url: "http://localhost:11434"
+      keep_alive: "30m"
+      request_timeout_sec: 120
 
     vllm:
       backend: "vllm"
@@ -56,6 +58,12 @@ local:
       api_style: "rkllm_demo"
       endpoint: "/rkllm_chat"
       api_key: ""
+      # 按需启动：首次请求才拉起 RKLLM（建议在 rk3588 打开）
+      autostart: true
+      autostart_timeout_sec: 120
+      # 若想非常驻，可打开；服务会在空闲一段时间后自动停止
+      stop_after_request: false
+      stop_idle_sec: 60
 
 cloud:
   backend: "openai_compat"

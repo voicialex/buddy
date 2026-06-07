@@ -1,4 +1,4 @@
-#include "buddy_audio/tts_player.hpp"
+#include "buddy_audio/io/speaker_player.hpp"
 
 #include <algorithm>
 
@@ -34,10 +34,12 @@ std::string TtsPlayer::clean_tts_text(const std::string& text) {
 
 bool TtsPlayer::configure(std::unique_ptr<TtsBackend> backend,
                           const std::string& speaker_device,
-                          DoneCallback on_done) {
+                          DoneCallback on_done,
+                          RenderTapCallback on_render) {
     backend_ = std::move(backend);
     speaker_device_ = speaker_device;
     on_done_ = std::move(on_done);
+    on_render_ = std::move(on_render);
     return backend_ != nullptr;
 }
 
@@ -158,6 +160,9 @@ bool TtsPlayer::play_speech(const float* samples, int32_t n, int32_t sample_rate
             return false;
         }
         int32_t to_write = std::min(n - offset, chunk_size);
+        if (on_render_) {
+            on_render_(samples + offset, to_write, sample_rate);
+        }
         snd_pcm_sframes_t written =
             snd_pcm_writei(playback_, pcm_buf.data() + offset, static_cast<snd_pcm_uframes_t>(to_write));
         if (written < 0) {

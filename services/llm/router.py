@@ -1,4 +1,5 @@
 """LLM routing logic for unified service."""
+import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -64,15 +65,26 @@ class Router:
                     yield StreamChunk(text="Local backend not configured", source="local", done=True)
                     return
 
-                # Step 1: Quick decision (routing_prompt only asks for LOCAL/CLOUD)
-                t0 = time.time()
-                decision_response = await self.local.complete(messages, routing_prompt)
-                decision_ms = int((time.time() - t0) * 1000)
-                decision = parse_decision(decision_response)
-
-                logger.info(f"[ROUTE] {'='*40}")
-                logger.info(f"[ROUTE] DECISION: {decision} ({decision_ms}ms)")
-                logger.info(f"[ROUTE] {'='*40}")
+                # No cloud backend: skip route decision and answer locally immediately.
+                # This avoids long "decision" RTT on slow local models (e.g. Ollama on CPU).
+                decision = "LOCAL"
+                if self.cloud:
+                    t0 = time.time()
+                    try:
+                        decision_response = await asyncio.wait_for(
+                            self.local.complete(messages, routing_prompt),
+                            timeout=8.0,
+                        )
+                        decision = parse_decision(decision_response)
+                        decision_ms = int((time.time() - t0) * 1000)
+                        logger.info(f"[ROUTE] {'='*40}")
+                        logger.info(f"[ROUTE] DECISION: {decision} ({decision_ms}ms)")
+                        logger.info(f"[ROUTE] {'='*40}")
+                    except Exception as e:
+                        logger.warning(f"[ROUTE] decision failed, fallback LOCAL: {e}")
+                        decision = "LOCAL"
+                else:
+                    logger.info("[ROUTE] cloud backend unavailable, bypass decision and use LOCAL")
 
                 # Step 2: Always stream local reply first (fills the gap)
                 t1 = time.time()

@@ -4,7 +4,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "buddy_audio/moss_tts/moss_tts_pipeline.hpp"
-#include "buddy_audio/tts_backend.hpp"
+#include "buddy_audio/tts/tts_backend.hpp"
 
 namespace {
 

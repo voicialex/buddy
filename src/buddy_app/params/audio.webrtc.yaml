@@ -1,0 +1,30 @@
+audio:
+  ros__parameters:
+    preprocess:
+      webrtc:
+        enable: true
+        vad:
+          enable: true
+          gate:
+            enable: true
+            with_kws: false
+          likelihood: 2          # 0..3
+          frame_ms: 10           # 10/20/30
+          min_voice_frames: 2
+          hangover_frames: 18
+        ns:
+          enable: true
+          level: 2               # 0..3
+        agc:
+          enable: true
+          mode: 2                # 0:adaptive_analog 1:adaptive_digital 2:fixed_digital
+          target_level_dbfs: 6
+          compression_gain_db: 6
+          limiter_enable: true
+          analog_level_min: 0
+          analog_level_max: 255
+          stream_analog_level: 127
+        aec:
+          enable: true
+          suppression_level: 1   # 0..2
+          stream_delay_ms: 80

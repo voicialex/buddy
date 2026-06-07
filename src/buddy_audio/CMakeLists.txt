@@ -28,6 +28,10 @@ find_library(
 find_package(ALSA REQUIRED)
 find_package(CURL REQUIRED)
 find_package(Boost REQUIRED)
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+  pkg_check_modules(WEBRTC_APM QUIET webrtc-audio-processing)
+endif()
 
 # Unified ORT discovery (cpu/gpu selected by BUILD_DEVICE)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake")
@@ -63,32 +67,40 @@ include(FindRKNN)
 
 add_library(
   audio_component SHARED
+  src/audio_config.cpp
   src/audio_pipeline_node.cpp
-  src/audio_capture.cpp
+  src/engine_factory.cpp
+  src/io/mic_capture.cpp
+  src/io/audio_preprocessor.cpp
   src/speech_recognizer.cpp
-  src/tts_player.cpp
-  src/sherpa_tts_backend.cpp
-  src/http_tts_backend.cpp
-  src/sherpa_asr_backend.cpp
-  src/server_asr_backend.cpp
-  src/infer/backend_ort.cpp
-  src/infer/backend_factory.cpp
+  src/io/speaker_player.cpp
+  src/tts/sherpa_tts_backend.cpp
+  src/tts/http_tts_backend.cpp
+  src/asr/sherpa_asr_backend.cpp
+  src/asr/server_asr_backend.cpp
+  src/runtime/infer/backend_ort.cpp
+  src/runtime/infer/backend_factory.cpp
 )
 
 if(RKNN_FOUND)
   target_sources(audio_component PRIVATE
-    src/infer/backend_rknn.cpp
-    src/asr_native_backend.cpp
+    src/runtime/infer/backend_rknn.cpp
+    src/asr/asr_native_backend.cpp
     src/zipformer/pipeline.cpp
+    src/melo_rknn/backend_rknn.cpp
+    src/melo_rknn/frontend.cpp
+    src/tts/melo_rknn_tts_backend.cpp
   )
   target_include_directories(audio_component PRIVATE ${RKNN_INCLUDE})
   target_link_libraries(audio_component ${RKNN_LIB})
   target_compile_definitions(audio_component PRIVATE HAS_RKNN=1)
+else()
+  target_sources(audio_component PRIVATE src/tts/melo_rknn_tts_backend_stub.cpp)
 endif()
 
 if(MOSS_TTS_AVAILABLE)
   target_sources(audio_component PRIVATE
-    src/moss_tts_backend.cpp
+    src/tts/moss_tts_backend.cpp
     src/moss_tts/moss_tts_pipeline.cpp
     src/moss_tts/tokenizer.cpp
     src/moss_tts/backend_onnxruntime.cpp
@@ -102,7 +114,7 @@ if(MOSS_TTS_AVAILABLE)
   )
 else()
   # Provide a stub so the linker doesn't fail
-  target_sources(audio_component PRIVATE src/moss_tts_backend_stub.cpp)
+  target_sources(audio_component PRIVATE src/tts/moss_tts_backend_stub.cpp)
 endif()
 target_include_directories(
   audio_component PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>
@@ -125,6 +137,15 @@ target_link_libraries(
   ${CURL_LIBRARIES}
   Boost::boost
 )
+if(WEBRTC_APM_FOUND)
+  target_include_directories(audio_component PRIVATE ${WEBRTC_APM_INCLUDE_DIRS})
+  target_link_libraries(audio_component ${WEBRTC_APM_LIBRARIES})
+  target_compile_options(audio_component PRIVATE ${WEBRTC_APM_CFLAGS_OTHER})
+  target_compile_definitions(audio_component PRIVATE HAS_WEBRTC_APM=1)
+  message(STATUS "WebRTC APM: enabled")
+else()
+  message(STATUS "WebRTC APM: disabled (install libwebrtc-audio-processing-dev)")
+endif()
 rclcpp_components_register_nodes(audio_component "AudioPipelineNode")
 install(
   TARGETS audio_component
@@ -138,15 +159,19 @@ if(BUILD_TESTING)
   ament_add_gtest(
     test_audio_node
     test/test_audio_node.cpp
+    src/audio_config.cpp
     src/audio_pipeline_node.cpp
-    src/audio_capture.cpp
+    src/engine_factory.cpp
+    src/io/mic_capture.cpp
+    src/io/audio_preprocessor.cpp
     src/speech_recognizer.cpp
-    src/tts_player.cpp
-    src/sherpa_tts_backend.cpp
-    src/http_tts_backend.cpp
-    src/sherpa_asr_backend.cpp
-    src/server_asr_backend.cpp
-    src/moss_tts_backend_stub.cpp
+    src/io/speaker_player.cpp
+    src/tts/sherpa_tts_backend.cpp
+    src/tts/http_tts_backend.cpp
+    src/asr/sherpa_asr_backend.cpp
+    src/asr/server_asr_backend.cpp
+    src/tts/moss_tts_backend_stub.cpp
+    src/tts/melo_rknn_tts_backend_stub.cpp
   )
   target_include_directories(
     test_audio_node PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> ${SHERPA_INCLUDE}
@@ -167,8 +192,14 @@ if(BUILD_TESTING)
     ${CURL_LIBRARIES}
     Boost::boost
   )
+  if(WEBRTC_APM_FOUND)
+    target_include_directories(test_audio_node PRIVATE ${WEBRTC_APM_INCLUDE_DIRS})
+    target_link_libraries(test_audio_node ${WEBRTC_APM_LIBRARIES})
+    target_compile_options(test_audio_node PRIVATE ${WEBRTC_APM_CFLAGS_OTHER})
+    target_compile_definitions(test_audio_node PRIVATE HAS_WEBRTC_APM=1)
+  endif()
 
-  ament_add_gtest(test_tts_player_interrupt test/test_tts_player_interrupt.cpp src/tts_player.cpp)
+  ament_add_gtest(test_tts_player_interrupt test/test_tts_player_interrupt.cpp src/io/speaker_player.cpp)
   target_include_directories(test_tts_player_interrupt PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
   target_compile_features(test_tts_player_interrupt PUBLIC cxx_std_17)
   ament_target_dependencies(test_tts_player_interrupt rclcpp rclcpp_lifecycle buddy_interfaces)

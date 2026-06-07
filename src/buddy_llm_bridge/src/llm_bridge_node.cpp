@@ -121,6 +121,10 @@ static std::string json_escape(const std::string& s) {
     return out;
 }
 
+static bool is_valid_llm_mode(const std::string& mode) {
+    return mode == "local_only" || mode == "cloud_only" || mode == "local_route";
+}
+
 LlmBridgeNode::LlmBridgeNode(const rclcpp::NodeOptions& options)
     : InferenceServerBase("llm_bridge", "/inference/llm", options) {}
 
@@ -132,6 +136,12 @@ CallbackReturn LlmBridgeNode::on_configure(const rclcpp_lifecycle::State&) {
 
     server_url_ = get_parameter("server_url").as_string();
     mode_ = get_parameter("mode").as_string();
+    if (!is_valid_llm_mode(mode_)) {
+        RCLCPP_ERROR(get_logger(),
+                     "Invalid llm_bridge.mode='%s'. Allowed: local_only | cloud_only | local_route",
+                     mode_.c_str());
+        return CallbackReturn::ERROR;
+    }
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
     create_action_server();

@@ -6,7 +6,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <string>
 
-#include "buddy_audio/asr_backend.hpp"
+#include "buddy_audio/asr/asr_backend.hpp"
 
 struct RecognitionEvent {
     enum Type { NONE, WAKE_WORD, ASR_TEXT };

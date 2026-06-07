@@ -30,3 +30,20 @@ def test_extract_stream_text_from_rkllm_chunk():
 def test_extract_complete_text():
     data = {"choices": [{"message": {"role": "assistant", "content": "Hello"}}]}
     assert RkLlmBackend._extract_complete_text(data) == "Hello"
+
+
+def test_autostart_options():
+    backend = RkLlmBackend(
+        autostart=True,
+        autostart_cmd="echo start",
+        stop_after_request=True,
+        stop_cmd="echo stop",
+        stop_idle_sec=30,
+        autostart_timeout_sec=45,
+    )
+    assert backend.autostart is True
+    assert backend.autostart_cmd == "echo start"
+    assert backend.stop_after_request is True
+    assert backend.stop_cmd == "echo stop"
+    assert backend.stop_idle_sec == 30
+    assert backend.autostart_timeout_sec == 45

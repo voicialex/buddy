@@ -1,6 +1,6 @@
 #include "buddy_audio/zipformer/pipeline.hpp"
 
-#include "buddy_audio/infer/backend.hpp"
+#include "buddy_audio/runtime/infer/backend.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -16,15 +16,15 @@ namespace zipformer {
 namespace {
 
 constexpr int kEncoderDim = 512;
-constexpr int kEncoderChunkSize = 103;
-constexpr int kNumEncoderLayers = 5;
-constexpr int kCacheHiddenDim = 256;
-constexpr int kCacheConvKernel = 30;
-constexpr int kNumHeads = 2;
+constexpr int kDefaultEncoderChunkSize = 103;
+constexpr int kDefaultNumEncoderLayers = 5;
+constexpr int kDefaultCacheHiddenDim = 256;
+constexpr int kDefaultCacheConvKernel = 30;
+constexpr int kDefaultNumHeads = 2;
 constexpr int kFrameLengthMs = 25;
 constexpr int kFrameShiftMs = 10;
 
-const int kCacheKeyLens[kNumEncoderLayers] = {192, 96, 48, 24, 96};
+const int kDefaultCacheKeyLens[kDefaultNumEncoderLayers] = {192, 96, 48, 24, 96};
 
 bool starts_with(const std::string& s, const std::string& prefix) {
     return s.size() >= prefix.size() && s.compare(0, prefix.size(), prefix) == 0;
@@ -60,6 +60,48 @@ void fft_inplace(std::vector<std::complex<float>>& a) {
     }
 }
 
+size_t shape_numel(const std::vector<int64_t>& shape) {
+    size_t n = 1;
+    for (auto d : shape) {
+        n *= static_cast<size_t>(std::max<int64_t>(d, 1));
+    }
+    return n;
+}
+
+infer::Tensor make_zero_tensor(const infer::InferBackend::InputSpec& spec) {
+    infer::Tensor t;
+    const size_t elem = std::max<size_t>(1, infer::dtype_size(spec.dtype));
+    const size_t elems_from_bytes = std::max(spec.size, spec.size_with_stride) / elem;
+    size_t required_numel = std::max(spec.required_elems, elems_from_bytes);
+    t.shape = spec.shape;
+    const size_t shape_num = shape_numel(t.shape);
+    if (required_numel == 0) {
+        required_numel = shape_num;
+    }
+    if (required_numel == 0) {
+        required_numel = 1;
+    }
+    if (t.shape.empty() || shape_num == 0 || shape_num != required_numel) {
+        t.shape = {static_cast<int64_t>(required_numel)};
+    }
+    const size_t numel = required_numel;
+    t.dtype = spec.dtype;
+    if (t.dtype == infer::DType::Int64) {
+        std::vector<int64_t> data(numel, 0);
+        return infer::Tensor::from_int64(std::move(data), std::move(t.shape));
+    }
+    if (t.dtype == infer::DType::Int32) {
+        std::vector<int32_t> data(numel, 0);
+        return infer::Tensor::from_int32(std::move(data), std::move(t.shape));
+    }
+    if (t.dtype == infer::DType::UInt8) {
+        t.data.assign(numel, 0);
+        return t;
+    }
+    std::vector<float> data(numel, 0.0f);
+    return infer::Tensor::from_float(std::move(data), std::move(t.shape));
+}
+
 }  // namespace
 
 struct Pipeline::Impl {
@@ -87,6 +129,7 @@ struct Pipeline::Impl {
     float log_floor = 1e-10f;
     std::vector<float> window;
     std::vector<float> mel_filterbank;
+    int encoder_chunk_size = kDefaultEncoderChunkSize;
 };
 
 Pipeline::Pipeline() = default;
@@ -105,6 +148,11 @@ bool Pipeline::init(const PipelineOptions& options) {
     impl_->encoder->load_model(options.encoder_model);
     impl_->decoder->load_model(options.decoder_model);
     impl_->joiner->load_model(options.joiner_model);
+    infer::InferBackend::InputSpec x_spec{};
+    if (impl_->encoder->get_input_spec("x", &x_spec) &&
+        x_spec.shape.size() >= 3 && x_spec.shape[1] > 0) {
+        impl_->encoder_chunk_size = static_cast<int>(x_spec.shape[1]);
+    }
 
     impl_->frame_length = kFrameLengthMs * options.sample_rate / 1000;
     impl_->frame_shift = kFrameShiftMs * options.sample_rate / 1000;
@@ -164,30 +212,55 @@ void Pipeline::reset() {
     if (!impl_) return;
 
     impl_->encoder_state.clear();
-    for (int i = 0; i < kNumEncoderLayers; ++i) {
-        // cached_len
-        impl_->encoder_state["cached_len_" + std::to_string(i)] =
-            infer::Tensor::from_int64(std::vector<int64_t>(kNumHeads, 0), {kNumHeads, 1});
-        // cached_avg
-        impl_->encoder_state["cached_avg_" + std::to_string(i)] =
-            infer::Tensor::from_float(
-                std::vector<float>(kNumHeads * kCacheHiddenDim, 0.0f),
-                {kNumHeads, 1, kCacheHiddenDim});
-        // cached_key, cached_val, cached_val2
-        for (const auto& prefix : {"cached_key_", "cached_val_", "cached_val2_"}) {
-            int d = kCacheKeyLens[i];
-            int last = starts_with(prefix, "cached_key_") ? 192 : 96;
-            impl_->encoder_state[std::string(prefix) + std::to_string(i)] =
-                infer::Tensor::from_float(
-                    std::vector<float>(kNumHeads * d * last, 0.0f),
-                    {kNumHeads, d, 1, last});
+    infer::InferBackend::InputSpec spec{};
+    bool dynamic_state_ready = false;
+    if (impl_->encoder && impl_->encoder->get_input_spec("cached_len_0", &spec)) {
+        dynamic_state_ready = true;
+        for (int i = 0;; ++i) {
+            const std::string suffix = std::to_string(i);
+            const std::string len_name = "cached_len_" + suffix;
+            if (!impl_->encoder->get_input_spec(len_name, &spec)) {
+                break;
+            }
+            impl_->encoder_state[len_name] = make_zero_tensor(spec);
+
+            const std::string avg_name = "cached_avg_" + suffix;
+            if (!impl_->encoder->get_input_spec(avg_name, &spec)) {
+                throw std::runtime_error("Missing required encoder input: " + avg_name);
+            }
+            impl_->encoder_state[avg_name] = make_zero_tensor(spec);
+            for (const auto& prefix : {"cached_key_", "cached_val_", "cached_val2_", "cached_conv1_", "cached_conv2_"}) {
+                const std::string name = std::string(prefix) + suffix;
+                if (!impl_->encoder->get_input_spec(name, &spec)) {
+                    throw std::runtime_error("Missing required encoder input: " + name);
+                }
+                impl_->encoder_state[name] = make_zero_tensor(spec);
+            }
         }
-        // cached_conv1, cached_conv2
-        for (const auto& prefix : {"cached_conv1_", "cached_conv2_"}) {
-            impl_->encoder_state[std::string(prefix) + std::to_string(i)] =
+    }
+    if (!dynamic_state_ready) {
+        for (int i = 0; i < kDefaultNumEncoderLayers; ++i) {
+            // Legacy fallback for backends that do not expose input specs.
+            impl_->encoder_state["cached_len_" + std::to_string(i)] =
+                infer::Tensor::from_int64(std::vector<int64_t>(kDefaultNumHeads, 0), {kDefaultNumHeads, 1});
+            impl_->encoder_state["cached_avg_" + std::to_string(i)] =
                 infer::Tensor::from_float(
-                    std::vector<float>(kNumHeads * kCacheHiddenDim * kCacheConvKernel, 0.0f),
-                    {kNumHeads, 1, kCacheHiddenDim, kCacheConvKernel});
+                    std::vector<float>(kDefaultNumHeads * kDefaultCacheHiddenDim, 0.0f),
+                    {kDefaultNumHeads, 1, kDefaultCacheHiddenDim});
+            for (const auto& prefix : {"cached_key_", "cached_val_", "cached_val2_"}) {
+                const int d = kDefaultCacheKeyLens[i];
+                const int last = starts_with(prefix, "cached_key_") ? 192 : 96;
+                impl_->encoder_state[std::string(prefix) + std::to_string(i)] =
+                    infer::Tensor::from_float(
+                        std::vector<float>(kDefaultNumHeads * d * last, 0.0f),
+                        {kDefaultNumHeads, d, 1, last});
+            }
+            for (const auto& prefix : {"cached_conv1_", "cached_conv2_"}) {
+                impl_->encoder_state[std::string(prefix) + std::to_string(i)] =
+                    infer::Tensor::from_float(
+                        std::vector<float>(kDefaultNumHeads * kDefaultCacheHiddenDim * kDefaultCacheConvKernel, 0.0f),
+                        {kDefaultNumHeads, 1, kDefaultCacheHiddenDim, kDefaultCacheConvKernel});
+            }
         }
     }
 
@@ -292,17 +365,17 @@ std::vector<int64_t> Pipeline::accept_waveform(const float* samples, int n, bool
     std::vector<int64_t> step_tokens;
     int feat_frames = static_cast<int>(impl_->feature_buffer.size() / options_.feature_dim);
 
-    while (feat_frames >= kEncoderChunkSize || (is_final && feat_frames > 0)) {
-        int use_frames = std::min(feat_frames, kEncoderChunkSize);
+    while (feat_frames >= impl_->encoder_chunk_size || (is_final && feat_frames > 0)) {
+        const int use_frames = std::min(feat_frames, impl_->encoder_chunk_size);
 
         // Build encoder input
         infer::TensorMap enc_inputs = impl_->encoder_state;
-        std::vector<float> x_data(kEncoderChunkSize * options_.feature_dim, 0.0f);
+        std::vector<float> x_data(static_cast<size_t>(impl_->encoder_chunk_size) * options_.feature_dim, 0.0f);
         std::copy(impl_->feature_buffer.begin(),
                   impl_->feature_buffer.begin() + use_frames * options_.feature_dim,
                   x_data.begin());
         enc_inputs["x"] = infer::Tensor::from_float(
-            std::move(x_data), {1, kEncoderChunkSize, options_.feature_dim});
+            std::move(x_data), {1, impl_->encoder_chunk_size, options_.feature_dim});
 
         auto enc_outputs = impl_->encoder->run(enc_inputs, {});
 

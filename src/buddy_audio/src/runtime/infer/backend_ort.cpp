@@ -1,4 +1,4 @@
-#include "buddy_audio/infer/backend.hpp"
+#include "buddy_audio/runtime/infer/backend.hpp"
 
 #include <onnxruntime_cxx_api.h>
 
@@ -36,7 +36,13 @@ public:
     }
 
     void load_model(const std::string& model_path) override {
-        session_ = std::make_unique<Ort::Session>(env_, model_path.c_str(), session_options_);
+        current_model_path_ = model_path;
+        try {
+            session_ = std::make_unique<Ort::Session>(env_, model_path.c_str(), session_options_);
+        } catch (const std::exception& e) {
+            throw std::runtime_error(
+                "Failed to load ORT model: " + current_model_path_ + " error: " + e.what());
+        }
         loaded_ = true;
 
         Ort::AllocatorWithDefaultOptions allocator;
@@ -66,7 +72,7 @@ public:
         for (const auto& name : input_names_) {
             auto it = inputs.find(name);
             if (it == inputs.end()) {
-                throw std::runtime_error("Missing input: " + name);
+                throw std::runtime_error("Missing input: " + name + " for ORT model: " + current_model_path_);
             }
             const Tensor& t = it->second;
             input_name_ptrs.push_back(name.c_str());
@@ -155,6 +161,50 @@ public:
     }
 
     bool is_loaded() const override { return loaded_; }
+    bool get_input_spec(const std::string& name, InputSpec* out) const override {
+        if (!loaded_ || !out || !session_) {
+            return false;
+        }
+        size_t idx = input_names_.size();
+        for (size_t i = 0; i < input_names_.size(); ++i) {
+            if (input_names_[i] == name) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx == input_names_.size()) {
+            return false;
+        }
+
+        auto info = session_->GetInputTypeInfo(idx).GetTensorTypeAndShapeInfo();
+        out->shape = info.GetShape();
+        for (auto& d : out->shape) {
+            if (d < 0) {
+                d = 0;
+            }
+        }
+        const auto elem_type = info.GetElementType();
+        switch (elem_type) {
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+                out->dtype = DType::Int64;
+                break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+                out->dtype = DType::Int32;
+                break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+                out->dtype = DType::UInt8;
+                break;
+            default:
+                out->dtype = DType::Float32;
+                break;
+        }
+        const size_t count = tensor_numel(out->shape);
+        out->required_elems = count;
+        out->size = count * dtype_size(out->dtype);
+        out->size_with_stride = out->size;
+        return true;
+    }
 
 private:
     Ort::Env env_;
@@ -162,6 +212,7 @@ private:
     std::unique_ptr<Ort::Session> session_;
     std::vector<std::string> input_names_;
     std::vector<std::string> output_names_;
+    std::string current_model_path_;
     bool loaded_ = false;
 };
 

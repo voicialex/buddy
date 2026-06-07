@@ -12,5 +12,8 @@ brain:
       cooldown_seconds: 60.0
     voice_trigger:
       attach_image: true
+      capture_timeout_ms: 1200
+      asr_filter:
+        strategy: "echo_substring"  # echo_substring | none
       followup_echo_guard_seconds: 8.0
       followup_echo_guard_min_chars: 4

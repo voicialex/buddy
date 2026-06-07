@@ -41,6 +41,10 @@ private:
                         std::shared_ptr<buddy_interfaces::srv::CaptureImage::Response> response);
 
     // Subscriptions (raw sensor_msgs/Image, compatible with LifecycleNode)
+    rclcpp::CallbackGroup::SharedPtr sub_callback_group_;
+    rclcpp::CallbackGroup::SharedPtr timer_callback_group_;
+    rclcpp::CallbackGroup::SharedPtr service_callback_group_;
+
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr emotion_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr game_sub_;
 

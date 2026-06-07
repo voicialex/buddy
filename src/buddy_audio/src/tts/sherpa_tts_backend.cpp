@@ -3,7 +3,7 @@
 #include <cstring>
 #include <rclcpp/rclcpp.hpp>
 
-#include "buddy_audio/tts_backend.hpp"
+#include "buddy_audio/tts/tts_backend.hpp"
 
 class SherpaTtsBackend : public TtsBackend {
 public:

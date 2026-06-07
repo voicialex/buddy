@@ -3,7 +3,7 @@
 #include <atomic>
 #include <filesystem>
 
-#include "buddy_audio/asr_backend.hpp"
+#include "buddy_audio/asr/asr_backend.hpp"
 
 class LocalAsrBackend : public AsrBackend {
 public:

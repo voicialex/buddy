@@ -3,8 +3,8 @@
 # Missing entries default to true (enabled).
 modules:
   audio: true
-  vision: false
-  camera_emotion: false
-  camera_game: false
+  vision: true
+  camera_emotion: true
+  camera_game: true
   brain: true
   llm_bridge: true

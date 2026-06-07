@@ -239,12 +239,18 @@ int main(int argc, char** argv) {
 
     RCLCPP_INFO(logger, "All nodes active. Spinning...");
 
-    // Read KWS state from audio.yaml and display appropriate banner
+    // Read KWS state from resolved audio param files (split or legacy) and
+    // display appropriate banner.
     bool kws_enabled = true;
-    auto audio_yaml_path = params_dir / "audio.yaml";
     try {
-        auto audio_cfg = YAML::LoadFile(audio_yaml_path.string());
-        kws_enabled = audio_cfg["audio"]["ros__parameters"]["kws"]["enable"].as<bool>(true);
+        const auto audio_param_files = resolve_param_files(install_dir, "audio", params_dir);
+        for (const auto& param_file : audio_param_files) {
+            auto cfg = YAML::LoadFile(param_file);
+            auto node = cfg["audio"]["ros__parameters"]["kws"]["enable"];
+            if (node) {
+                kws_enabled = node.as<bool>(kws_enabled);
+            }
+        }
     } catch (...) {}
 
     if (kws_enabled) {

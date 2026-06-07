@@ -12,8 +12,17 @@ Options:
   -t, --arch TARGET   x86 (default) or arm64
   -d, --device DEV    cpu (default), gpu (CUDA), or npu (RKNN)
   -c          Clean build
-  -p, --package       Package .deb after build (default: skip)
+  -p, --package       x86 only: package .deb after build (default: skip)
   -v VER      Deb version (default: 1.0.0)
+
+Outputs:
+  x86 build:
+    output/x86_64/install/                         # colcon install
+    output/x86_64/deb/buddy-robot_<ver>_amd64_<device>.deb   (with -p)
+  arm64 build:
+    output/aarch64/deb/buddy-robot_<ver>_arm64_<device>.deb
+    output/aarch64/deb/buddy-models_<ver>_<device>.tar.gz
+    (arm64 always exports runtime deb; models tar builds only when missing)
 
 Examples:
   ./build.sh                        # x86 + cpu incremental
@@ -23,6 +32,16 @@ Examples:
   ./build.sh -t arm64 -c            # arm64 force rebuild (~3min, ccache still helps)
   ./build.sh -t arm64 -v 2.0.0     # arm64 custom version
   ./build.sh --packages-select X    # x86 single package
+
+Optional service packages (separate from runtime):
+  ./scripts/package_services.sh --arch arm64
+  # outputs:
+  #   output/aarch64/services/buddy-service-llm_<ver>_aarch64.tar.gz
+  #   output/aarch64/services/buddy-service-funasr_<ver>_aarch64.tar.gz
+  #   output/aarch64/services/buddy-service-chattts_<ver>_aarch64.tar.gz
+
+One-command board deploy/run (incremental runtime/models/services):
+  ./scripts/deploy_run_arm64_npu.sh --build-services
 
 Env: BUDDY_PARALLEL_WORKERS=N (default: all cores)
 
@@ -46,6 +65,8 @@ build_arm64() {
   local version="${VERSION:-1.0.0}"
   local parallel="${BUDDY_PARALLEL_WORKERS:-$(nproc)}"
   local output_dir="$ROOT_DIR/output/aarch64/deb"
+  local deb_file="$output_dir/buddy-robot_${version}_arm64_${DEVICE}.deb"
+  local models_file="$output_dir/buddy-models_${version}_${DEVICE}.tar.gz"
 
   echo "[INFO] Building buddy-robot_${version}_arm64_${DEVICE}.deb (cross-compile, no QEMU)"
   echo "[INFO] Device target: $DEVICE"
@@ -64,27 +85,13 @@ build_arm64() {
       die "RKNN SDK not found at prebuilt/aarch64/rknn" \
           "Run: cd ../thirdparty && ./build.sh -t arm64 rknn"
     fi
-
-    # Copy flask_server.py from rknn-llm repo into buddy for Docker packaging
-    local rkllm_flask="$ROOT_DIR/../rknn-llm/examples/rkllm_server_demo/rkllm_server/flask_server.py"
-    if [[ -f "$rkllm_flask" ]]; then
-      mkdir -p "$ROOT_DIR/docker/rkllm_server"
-      cp "$rkllm_flask" "$ROOT_DIR/docker/rkllm_server/"
-      echo "[INFO] Copied flask_server.py for RKLLM packaging"
-    else
-      die "RKLLM flask_server.py not found at $rkllm_flask" \
-          "Clone rknn-llm to $ROOT_DIR/../rknn-llm"
-    fi
   else
-    # Empty placeholder so Docker COPY doesn't fail
+    # Keep Docker COPY stable when non-npu build skips RKNN.
     mkdir -p "$ROOT_DIR/prebuilt/aarch64/rknn"
-    mkdir -p "$ROOT_DIR/docker/rkllm_server"
-    touch "$ROOT_DIR/docker/rkllm_server/flask_server.py"
   fi
 
-  # Ensure third_party (FunASR + OpenCV) prebuilt
-  if [[ ! -f "$ROOT_DIR/prebuilt/aarch64/funasr/bin/funasr-wss-server" ]] \
-    || [[ ! -f "$ROOT_DIR/prebuilt/aarch64/opencv/lib/libopencv_core.so" ]]; then
+  # Ensure runtime third_party prebuilt (runtime only needs OpenCV here).
+  if [[ ! -f "$ROOT_DIR/prebuilt/aarch64/opencv/lib/libopencv_core.so" ]]; then
     echo "[INFO] Running build_thirdparty.sh --arch aarch64 ..."
     "$ROOT_DIR/scripts/build_thirdparty.sh" --arch aarch64
   fi
@@ -94,34 +101,66 @@ build_arm64() {
     echo "[WARN] models/ not found, creating empty placeholder"
     mkdir -p "$ROOT_DIR/models"
   fi
+  if [[ "$DEVICE" == "npu" ]]; then
+    local missing_zipformer=()
+    local zipformer_dir="$ROOT_DIR/models/zipformer-rknn"
+    local rf
+    for rf in encoder.rknn decoder.rknn joiner.rknn tokens.txt; do
+      [[ -f "$zipformer_dir/$rf" ]] || missing_zipformer+=("$rf")
+    done
+    if [[ ${#missing_zipformer[@]} -gt 0 ]]; then
+      die "Missing zipformer-rknn model files: ${missing_zipformer[*]}" \
+          "Run: ./scripts/setup_prebuilt.sh --arch arm64 models"
+    fi
+  fi
 
+  if [[ "$CLEAN" == true ]]; then
+    echo "[CLEAN] Removing $output_dir"
+    rm -rf "$output_dir"
+  fi
   mkdir -p "$output_dir"
 
   local cache_flag=()
   [[ "$CLEAN" == true ]] && cache_flag=(--no-cache)
 
+  # Build/package app every run.
   DOCKER_BUILDKIT=1 docker build \
     "${cache_flag[@]}" \
     --build-arg VERSION="$version" \
     --build-arg PARALLEL_WORKERS="$parallel" \
     --build-arg DEVICE="$DEVICE" \
+    --target export-package \
     --output "type=local,dest=$output_dir/" \
     -f "$DOCKER_DIR/Dockerfile.arm64" \
     "$ROOT_DIR"
 
-  local deb_file="$output_dir/buddy-robot_${version}_arm64_${DEVICE}.deb"
-  local models_file="$output_dir/buddy-models_${version}_${DEVICE}.tar.gz"
+  # Build models tar only when missing (manual delete can force refresh).
+  if [[ ! -f "$models_file" ]]; then
+    echo "[INFO] Models tarball missing, building once: $(basename "$models_file")"
+    DOCKER_BUILDKIT=1 docker build \
+      "${cache_flag[@]}" \
+      --build-arg VERSION="$version" \
+      --build-arg PARALLEL_WORKERS="$parallel" \
+      --build-arg DEVICE="$DEVICE" \
+      --target export-models \
+      --output "type=local,dest=$output_dir/" \
+      -f "$DOCKER_DIR/Dockerfile.arm64" \
+      "$ROOT_DIR"
+  else
+    echo "[INFO] Reusing existing models tarball: $(basename "$models_file")"
+  fi
+
   echo ""
   [[ -f "$deb_file" ]] && echo "[OK] Package: $deb_file ($(du -sh "$deb_file" | cut -f1))"
   [[ -f "$models_file" ]] && echo "[OK] Models:  $models_file ($(du -sh "$models_file" | cut -f1))"
 
   if [[ -f "$models_file" ]]; then
     echo ""
-    echo "Deploy to RK3588 board:"
-    echo "  scp $deb_file $models_file user@board:/tmp/"
-    echo "  ssh user@board 'sudo dpkg -i /tmp/buddy-robot_${version}_arm64_${DEVICE}.deb'"
-    echo "  ssh user@board 'sudo mkdir -p /opt/buddy/models && sudo tar xzf /tmp/buddy-models_${version}_${DEVICE}.tar.gz -C /opt/buddy/models/'"
-    echo "  ssh user@board 'sudo systemctl start buddy'"
+    echo "RK3588 deploy (recommended):"
+    echo "  ./scripts/deploy_run_arm64_npu.sh --build-services"
+    echo "Manual (minimal):"
+    echo "  scp $deb_file $models_file user@board:~/"
+    echo "  ssh user@board 'cd ~ && rm -rf output/opt/buddy && dpkg -x buddy-robot_${version}_arm64_${DEVICE}.deb output && mkdir -p output/buddy-models-cache && tar xzf buddy-models_${version}_${DEVICE}.tar.gz -C output/buddy-models-cache && ln -sfn ~/output/buddy-models-cache ~/output/opt/buddy/models && ~/output/opt/buddy/run.sh'"
   fi
 }
 
@@ -151,10 +190,9 @@ build_x86() {
     || die "Missing ROS 2 setup: $ros2_setup" \
            "setup_prebuilt.sh failed — check ros2_core tarball availability"
 
-  # Ensure third_party (FunASR + OpenCV) prebuilt
+  # Ensure runtime third_party (OpenCV) prebuilt
   local opencv_dir="$ROOT_DIR/prebuilt/current/opencv"
-  if [[ ! -f "$ROOT_DIR/prebuilt/$arch/funasr/bin/funasr-wss-server" ]] \
-    || [[ ! -d "$opencv_dir" ]]; then
+  if [[ ! -d "$opencv_dir" ]]; then
     echo "[INFO] Running build_thirdparty.sh ..."
     "$ROOT_DIR/scripts/build_thirdparty.sh"
   fi

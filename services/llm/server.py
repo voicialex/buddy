@@ -13,7 +13,7 @@ from pathlib import Path
 
 import uvicorn
 import yaml
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -33,6 +33,7 @@ app = FastAPI(title="Buddy LLM Service")
 router: Router | None = None
 memory_manager: MemoryManager | None = None
 config: dict = {}
+VALID_LLM_MODES = {"local_only", "cloud_only", "local_route"}
 
 
 def load_config() -> dict:
@@ -46,7 +47,12 @@ def load_config() -> dict:
 def create_backend(cfg: dict):
     backend_type = cfg.get("backend", "")
     if backend_type == "ollama":
-        return OllamaBackend(url=cfg.get("url", "http://localhost:11434"), model=cfg.get("model", "buddy"))
+        return OllamaBackend(
+            url=cfg.get("url", "http://localhost:11434"),
+            model=cfg.get("model", "qwen2.5:7b"),
+            keep_alive=cfg.get("keep_alive", "30m"),
+            request_timeout_sec=float(cfg.get("request_timeout_sec", 120)),
+        )
     elif backend_type == "openai_compat":
         return OpenAICompatBackend(
             base_url=cfg.get("base_url", ""),
@@ -62,12 +68,21 @@ def create_backend(cfg: dict):
             enable_thinking=cfg.get("enable_thinking"),
         )
     elif backend_type == "rk_llm":
+        project_root = Path(__file__).resolve().parents[2]
+        default_start_cmd = f"\"{project_root}/scripts/start_llm_server.sh\" start-rkllm"
+        default_stop_cmd = f"\"{project_root}/scripts/start_llm_server.sh\" stop-rkllm"
         return RkLlmBackend(
             base_url=cfg.get("base_url", "http://127.0.0.1:8080"),
             model=cfg.get("model", "buddy"),
             api_key=cfg.get("api_key", ""),
             endpoint=cfg.get("endpoint", ""),
             api_style=cfg.get("api_style", "rkllm_demo"),
+            autostart=bool(cfg.get("autostart", True)),
+            autostart_cmd=cfg.get("autostart_cmd", default_start_cmd),
+            stop_after_request=bool(cfg.get("stop_after_request", False)),
+            stop_cmd=cfg.get("stop_cmd", default_stop_cmd),
+            stop_idle_sec=int(cfg.get("stop_idle_sec", 60)),
+            autostart_timeout_sec=int(cfg.get("autostart_timeout_sec", 120)),
         )
     return None
 
@@ -100,6 +115,11 @@ def resolve_active_backend(local_cfg: dict) -> str:
 async def startup():
     global router, memory_manager, config
     config = load_config()
+    configured_mode = str(config.get("mode", "local_route")).strip()
+    if configured_mode not in VALID_LLM_MODES:
+        raise RuntimeError(
+            f"Invalid config.mode='{configured_mode}', allowed: {', '.join(sorted(VALID_LLM_MODES))}"
+        )
 
     local_cfg = config.get("local", {})
     active = resolve_active_backend(local_cfg)
@@ -137,6 +157,12 @@ async def chat(request: Request):
     body = await request.json()
     messages = body.get("messages", [])
     mode = body.get("mode", config.get("mode", "local_route"))
+    mode = str(mode).strip()
+    if mode not in VALID_LLM_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid mode='{mode}', allowed: {', '.join(sorted(VALID_LLM_MODES))}",
+        )
     session_id = body.get("session_id", "default")
     emotion = body.get("emotion", "")
     image_base64 = body.get("image_base64", "")
@@ -203,6 +229,11 @@ async def health():
     local_ok = await router.local.health_check() if router and router.local else False
     cloud_ok = await router.cloud.health_check() if router and router.cloud else False
     return {"local": local_ok, "cloud": cloud_ok, "memory": memory_manager is not None}
+
+@app.get("/ready")
+async def ready():
+    # Liveness-only endpoint for startup scripts. Do not block on backend health checks.
+    return {"ready": True}
 
 
 if __name__ == "__main__":

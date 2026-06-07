@@ -1,4 +1,4 @@
-#include "buddy_audio/audio_capture.hpp"
+#include "buddy_audio/io/mic_capture.hpp"
 
 #include <chrono>
 

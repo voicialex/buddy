@@ -9,9 +9,10 @@
 #include <string>
 #include <thread>
 
-#include "buddy_audio/audio_capture.hpp"
+#include "buddy_audio/io/mic_capture.hpp"
+#include "buddy_audio/io/audio_preprocessor.hpp"
+#include "buddy_audio/io/speaker_player.hpp"
 #include "buddy_audio/speech_recognizer.hpp"
-#include "buddy_audio/tts_player.hpp"
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
@@ -32,6 +33,7 @@ private:
     void on_tts_control(const buddy_interfaces::msg::TtsControl& msg);
 
     std::unique_ptr<AudioCapture> capture_;
+    std::unique_ptr<AudioPreprocessor> preprocessor_;
     std::unique_ptr<SpeechRecognizer> recognizer_;
     std::unique_ptr<TtsPlayer> tts_player_;
 
