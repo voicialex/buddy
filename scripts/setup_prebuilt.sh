@@ -26,136 +26,39 @@ print_help() {
     clash_port="$(ss -lntp 2>/dev/null | awk '/clash|verge/ && /127.0.0.1:/ { split($4,a,":"); print a[length(a)]; exit }')"
 
     cat <<EOF
-Usage: ./scripts/setup_prebuilt.sh [OPTIONS] [COMMAND]
+Usage: ./scripts/setup_prebuilt.sh [OPTIONS]
 
-Commands:
-  all       Install prebuilt libs + all models (default)
-  prebuilt  Only prebuilt libs (ros2_core, onnxruntime, sherpa-onnx, sentencepiece, rkllm)
-  models    Only models (ASR, KWS, TTS, FunASR, MOSS-TTS, Vision, ChatTTS hint, Ollama hint)
-  vision    Only vision models (face_emotion; legacy emotion fallback)
-  funasr    Only FunASR runtime + model
-  moss-tts  Only MOSS-TTS dependencies + models
+Download prebuilt libraries and AI models for buddy.
+Skips anything already present — safe to re-run.
 
 Options:
-  --arch <x86_64|aarch64|arm64>   Target architecture (default: host)
-  --proxy <url>                   One-shot proxy for this run
-  --with-gpu-ort                  Download onnxruntime-gpu (x86_64 only, optional; partial cache auto-resumes)
-  -h, --help                      Show this help
-
-Proxy quick start (Clash Verge):
+  --arch <x86_64|arm64>   Target arch for prebuilt libs (default: host)
+  --proxy <url>           HTTP proxy for this run
+  --with-gpu-ort          Include onnxruntime-gpu (x86_64 only)
+  -h, --help              Show this help
 EOF
 
     if [[ -n "$clash_port" ]]; then
-        cat <<EOF
-  Detected local Clash Verge proxy: http://127.0.0.1:${clash_port}
-  Run:
-    ./scripts/setup_prebuilt.sh --proxy http://127.0.0.1:${clash_port} models
-EOF
-    else
-        cat <<'EOF'
-  Clash Verge proxy unavailable on this machine (not detected).
-  Run without proxy, or pass your own proxy URL:
-    ./scripts/setup_prebuilt.sh --proxy http://127.0.0.1:<port> models
-EOF
+        echo ""
+        echo "  Detected proxy: http://127.0.0.1:${clash_port}"
+        echo "  Use: --proxy http://127.0.0.1:${clash_port}"
     fi
 
     cat <<'EOF'
 
-Models overview (stored in models/):
-  ┌─────────────────────────────────────────────────────────────────────────────────┐
-  │ Model                    │ Size   │ Source                │ Auto?               │
-  ├─────────────────────────────────────────────────────────────────────────────────┤
-  │ ASR RKNN (rk3588)        │ ~130MB │ refs/sdk local mirror │ ✓ auto (arm64 only) │
-  │ ASR ONNX (legacy)        │ ~180MB │ Local HF mirror       │ x86 only            │
-  │ KWS (keyword spotting)   │ ~13MB  │ GitHub k2-fsa         │ ✓ auto              │
-  │ TTS (kokoro-int8)        │ ~207MB │ GitHub k2-fsa         │ ✓ auto              │
-  │ TTS Melo RKNN (rk3588)   │ ~505MB │ Local refs/melo-tts   │ ✓ auto (arm64 only) │
-  │ FunASR (paraformer-zh)   │ ~800MB │ ModelScope            │ ✓ auto (needs CLI)  │
-  │ MOSS-TTS Nano            │ ~500MB │ HuggingFace           │ ✓ auto              │
-  │ Vision Face+Emotion      │ ~2.5MB │ Local HF mirror        │ ✓ auto              │
-  │ ChatTTS                  │ ~1.2GB │ HuggingFace (auto DL) │ ✗ hint only         │
-  │ Ollama (qwen2.5:7b)     │ ~4.4GB │ ollama pull           │ ✗ hint only         │
-  │ RKLLM (Qwen3-4B-w8a8)   │ ~3.5GB │ rknn-llm model zoo    │ ✗ manual (NPU only) │
-  └─────────────────────────────────────────────────────────────────────────────────┘
+Models (auto-downloaded, skipped if present):
+  Auto     ASR (ONNX x86 / RKNN arm64), KWS, TTS (kokoro + melo), FunASR,
+           MOSS-TTS, Vision (face_emotion)
+  Manual   ChatTTS (~1.2GB, auto on first run), Ollama (~4.4GB), RKLLM (~3.5GB)
 
-Manual download commands:
-  # ASR RKNN (RK3588 NPU, recommended)
-  # source of truth:
-  #   ../refs/temp_code/source_code/sdk/rk3588/model/asr/
-  # canonical runtime names:
-  cp ../hugging_face/models/asr/zipformer-rknn/{encoder.rknn,decoder.rknn,joiner.rknn,tokens.txt} models/zipformer-rknn/
-
-  # Optional: pull from your own HF repo (set base first)
-  # export BUDDY_ZIPFORMER_RKNN_HF_BASE=https://huggingface.co/<you>/<repo>/resolve/main/models/asr/zipformer-rknn
-  # wget "$BUDDY_ZIPFORMER_RKNN_HF_BASE/encoder.rknn" -O models/zipformer-rknn/encoder.rknn
-  # wget "$BUDDY_ZIPFORMER_RKNN_HF_BASE/decoder.rknn" -O models/zipformer-rknn/decoder.rknn
-  # wget "$BUDDY_ZIPFORMER_RKNN_HF_BASE/joiner.rknn" -O models/zipformer-rknn/joiner.rknn
-  # wget "$BUDDY_ZIPFORMER_RKNN_HF_BASE/tokens.txt" -O models/zipformer-rknn/tokens.txt
-
-  # ASR ONNX (legacy, x86 only; arm64 NPU does NOT use this)
-  cp ../hugging_face/models/asr/zipformer-onnx/{encoder-epoch-99-avg-1.onnx,decoder-epoch-99-avg-1.onnx,joiner-epoch-99-avg-1.onnx,tokens.txt} models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/
-  # Old direct download method (fallback only):
-  # wget https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2
-  # tar xjf sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2 -C models/
-
-  # KWS
-  wget https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile.tar.bz2
-  tar xjf sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile.tar.bz2 -C models/
-
-  # TTS (kokoro-int8, default)
-  wget https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_1.tar.bz2
-  tar xjf kokoro-int8-multi-lang-v1_1.tar.bz2 -C models/
-  # TTS (vits-aishell3, backup)
-  wget https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-icefall-zh-aishell3.tar.bz2
-  tar xjf vits-icefall-zh-aishell3.tar.bz2 -C models/
-  # TTS (melo, backup)
-  wget https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-melo-tts-zh_en.tar.bz2
-  tar xjf vits-melo-tts-zh_en.tar.bz2 -C models/
-  # TTS (melo RKNN, arm64 NPU)
-  mkdir -p models/melo-tts-rknn/checkpoint/rknn
-  cp ../refs/melo-tts/checkpoint/rknn_rk3588/{configuration.json,tokenizer.json,vocab.txt,bert_lml_model.rknn,prior_model.rknn,flow_model.rknn,decoder_frame31.rknn} models/melo-tts-rknn/checkpoint/rknn/
-  mkdir -p models/melo-tts-rknn/model/MeloTTS-ONNX/melo_onnx/text
-  cp ../refs/melo-tts/model/MeloTTS-ONNX/melo_onnx/text/{opencpop-strict.txt,tone_sandhi.py} models/melo-tts-rknn/model/MeloTTS-ONNX/melo_onnx/text/
-  mkdir -p models/melo-tts-rknn/third_party_data/{jieba,pypinyin}
-  cp ../refs/melo-tts/third_party_data/jieba/dict.txt models/melo-tts-rknn/third_party_data/jieba/
-  cp ../refs/melo-tts/third_party_data/pypinyin/{pinyin_dict.json,phrases_dict.json} models/melo-tts-rknn/third_party_data/pypinyin/
-
-  # FunASR paraformer-zh
-  pip install modelscope
-  modelscope download --model iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx --local_dir models/funasr-paraformer-zh-offline
-  modelscope download --model iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online-onnx --local_dir models/funasr-paraformer-zh-online
-  modelscope download --model iic/speech_fsmn_vad_zh-cn-16k-common-onnx --local_dir models/funasr-vad
-
-  # MOSS-TTS Nano (multiple files from HuggingFace)
-  # Run: ./scripts/setup_prebuilt.sh moss-tts
-
-  # Vision face-emotion (retinaface + affecnet)
-  mkdir -p models/face_emotion
-  cp ../hugging_face/models/vision/face_emotion/{retinaface_mnet_v2_fp16.onnx,retinaface_mnet_v2_fp16.rknn,affecnet7_fp16.onnx,affecnet7_fp16.rknn} models/face_emotion/
-  # Optional fallback (legacy Haar model)
-  # scp teammate:/path/to/models/emotion/emotion_classifier.onnx models/emotion/
-
-  # ChatTTS (auto-downloads on first tts_server.py run, or manually)
-  pip install ChatTTS
-  python -c "import ChatTTS; c=ChatTTS.Chat(); c.load(custom_path='models/ChatTTS')"
-
-  # Ollama LLM
-  curl -fsSL https://ollama.com/install.sh | sh
-  ollama pull qwen2.5:7b
-
-  # RKLLM (NPU builds only — pre-converted models from rknn-llm model zoo)
-  # Download from: https://console.box.lenovo.com/l/l0tXb8 (fetch code: rkllm)
-  # Place .rkllm files in models/rkllm/
-  mkdir -p models/rkllm
-  mv Qwen3-4B-rk3588-w8a8.rkllm models/rkllm/
+Override HF source via env vars:
+  BUDDY_ZIPFORMER_RKNN_HF_BASE  BUDDY_ZIPFORMER_ONNX_HF_BASE
+  BUDDY_MELO_TTS_HF_BASE        BUDDY_FACE_EMOTION_HF_BASE
 
 Examples:
-  ./scripts/setup_prebuilt.sh                        # Install everything (host arch)
-  ./scripts/setup_prebuilt.sh --arch arm64 prebuilt # arm64 prebuilt libs only
-  ./scripts/setup_prebuilt.sh --with-gpu-ort prebuilt # include optional onnxruntime-gpu on x86_64
-  ./scripts/setup_prebuilt.sh models                 # Download all models
-  ./scripts/setup_prebuilt.sh vision                 # Install vision models only
-  ./scripts/setup_prebuilt.sh --proxy http://127.0.0.1:<port> models # Download models via proxy
+  ./scripts/setup_prebuilt.sh                              # Everything (host)
+  ./scripts/setup_prebuilt.sh --arch arm64                 # Cross-compile
+  ./scripts/setup_prebuilt.sh --proxy http://127.0.0.1:7890
 EOF
 }
 
@@ -168,7 +71,11 @@ while [[ $# -gt 0 ]]; do
         --arch) ARCH="$2"; shift 2 ;;
         --proxy) PROXY_URL="$2"; shift 2 ;;
         --with-gpu-ort) WITH_GPU_ORT=true; shift ;;
-        *) break ;;
+        *)
+            echo "[ERROR] Unknown option: $1"
+            echo "Run '$0 --help' for usage."
+            exit 1
+            ;;
     esac
 done
 
@@ -192,25 +99,11 @@ ROS2_CORE_BASE="$PROJECT_DIR/../ros2_core/output"
 
 # RKNN-LLM (external repo at workspace root)
 RKNN_LLM_BASE="$PROJECT_DIR/../rknn-llm"
-# MeloTTS RKNN reference repo (local workspace reference)
-MELO_TTS_REF_ROOT="$PROJECT_DIR/../refs/melo-tts"
-# Zipformer RKNN model mirror (maintained outside buddy repo)
-ZIPFORMER_RKNN_LOCAL_DIR="${BUDDY_ZIPFORMER_RKNN_LOCAL_DIR:-$PROJECT_DIR/../hugging_face/models/asr/zipformer-rknn}"
-# Optional remote HF base:
-#   https://huggingface.co/<org>/<repo>/resolve/main/models/asr/zipformer-rknn
-ZIPFORMER_RKNN_HF_BASE="${BUDDY_ZIPFORMER_RKNN_HF_BASE:-}"
-# Zipformer ONNX mirror (legacy x86 path)
-ZIPFORMER_ONNX_LOCAL_DIR="${BUDDY_ZIPFORMER_ONNX_LOCAL_DIR:-$PROJECT_DIR/../hugging_face/models/asr/zipformer-onnx}"
-# Optional remote HF base:
-#   https://huggingface.co/<org>/<repo>/resolve/main/models/asr/zipformer-onnx
-ZIPFORMER_ONNX_HF_BASE="${BUDDY_ZIPFORMER_ONNX_HF_BASE:-}"
-# Vision face-emotion mirror (retinaface + affecnet)
-FACE_EMOTION_LOCAL_DIR="${BUDDY_FACE_EMOTION_LOCAL_DIR:-$PROJECT_DIR/../hugging_face/models/vision/face_emotion}"
-# Optional remote HF base:
-#   https://huggingface.co/<org>/<repo>/resolve/main/models/vision/face_emotion
-FACE_EMOTION_HF_BASE="${BUDDY_FACE_EMOTION_HF_BASE:-}"
-# Vision RKNN reference (rk3588 source-of-truth in local refs)
-FACE_EMOTION_RK3588_REF_DIR="${BUDDY_FACE_EMOTION_RK3588_REF_DIR:-$PROJECT_DIR/../refs/temp_code/source_code/sdk/rk3588/model/face_emotion}"
+# HuggingFace model download base URLs (override via BUDDY_* env vars)
+MELO_TTS_HF_BASE="${BUDDY_MELO_TTS_HF_BASE:-https://huggingface.co/voicialex/melo-tts-rknn/resolve/main}"
+ZIPFORMER_RKNN_HF_BASE="${BUDDY_ZIPFORMER_RKNN_HF_BASE:-https://huggingface.co/voicialex/zipformer-asr-rknn/resolve/main/rknn}"
+ZIPFORMER_ONNX_HF_BASE="${BUDDY_ZIPFORMER_ONNX_HF_BASE:-https://huggingface.co/voicialex/zipformer-asr-rknn/resolve/main/onnx}"
+FACE_EMOTION_HF_BASE="${BUDDY_FACE_EMOTION_HF_BASE:-https://huggingface.co/voicialex/face-emotion-rknn/resolve/main}"
 
 ROS2_TARBALL_PATH=""
 if [ -f "$ROS2_CORE_BASE/humble/${ARCH_NORMALIZED}/ros2-humble-${ARCH_NORMALIZED}.tar.gz" ]; then
@@ -439,7 +332,6 @@ setup_onnxruntime_gpu() {
         if [ "$resume_partial" = true ]; then
             :
         else
-            log_skip "ONNX Runtime GPU (optional, enable with --with-gpu-ort)"
             return 0
         fi
     fi
@@ -454,7 +346,6 @@ setup_onnxruntime_gpu() {
     fi
 
     if [ -z "$ONNXRT_GPU_URL" ]; then
-        log_skip "ONNX Runtime GPU (not available on ${ARCH})"
         return 0
     fi
     ensure_archive "$ONNXRT_GPU_URL" "$tmp" "tgz" "ONNX Runtime GPU v${ONNXRT_GPU_VERSION}" || return 1
@@ -465,9 +356,8 @@ setup_onnxruntime_gpu() {
 }
 
 setup_rknn() {
-    # Only needed for aarch64 builds
+    # RKNN is provided by thirdparty tarball (extracted via check_thirdparty)
     if [ "$ARCH_NORMALIZED" != "aarch64" ]; then
-        log_skip "RKNN SDK (x86_64, not needed)"
         return 0
     fi
     if [ -f "$PREBUILT_DIR/rknn/lib/librknnrt.so" ]; then
@@ -483,7 +373,6 @@ setup_rknn() {
 setup_rkllm() {
     # Only needed for aarch64 builds (RK3588 NPU LLM)
     if [ "$ARCH_NORMALIZED" != "aarch64" ]; then
-        log_skip "RKLLM Runtime (x86_64, not needed)"
         return 0
     fi
     if [ -f "$PREBUILT_DIR/rkllm/lib/librkllmrt.so" ]; then
@@ -557,48 +446,18 @@ setup_model_asr() {
     fi
 
     mkdir -p "$target_dir"
-    if [ -d "$ZIPFORMER_ONNX_LOCAL_DIR" ]; then
-        local local_missing=()
-        for f in "${required_files[@]}"; do
-            if [ ! -f "$ZIPFORMER_ONNX_LOCAL_DIR/$f" ]; then
-                local_missing+=("$f")
-            fi
-        done
-        if [ ${#local_missing[@]} -eq 0 ]; then
-            log_step "Installing ASR ONNX model ($name) from local mirror ..."
-            cp -f "$ZIPFORMER_ONNX_LOCAL_DIR"/{encoder-epoch-99-avg-1.onnx,decoder-epoch-99-avg-1.onnx,joiner-epoch-99-avg-1.onnx,tokens.txt} "$target_dir/"
-            log_ok "ASR model ($name)"
-            return 0
-        fi
-        log_step "Local zipformer ONNX mirror incomplete, fallback to remote HF: missing ${local_missing[*]}"
-    fi
-
-    if [ -n "$ZIPFORMER_ONNX_HF_BASE" ]; then
-        log_step "Downloading ASR ONNX model ($name) from custom HF ..."
-        for f in "${required_files[@]}"; do
-            download "$ZIPFORMER_ONNX_HF_BASE/$f" "$target_dir/$f" || {
-                log_err "Failed to download ASR ONNX file: $f"
-                return 1
-            }
-        done
-        log_ok "ASR model ($name)"
-        return 0
-    fi
-
-    log_err "ASR ONNX model source not found."
-    echo "       Preferred local mirror: $ZIPFORMER_ONNX_LOCAL_DIR"
-    echo "       Or set BUDDY_ZIPFORMER_ONNX_HF_BASE to your HF path, e.g.:"
-    echo "         export BUDDY_ZIPFORMER_ONNX_HF_BASE=https://huggingface.co/<org>/<repo>/resolve/main/models/asr/zipformer-onnx"
-    echo "       Old direct download method (manual fallback):"
-    echo "         wget https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${name}.tar.bz2"
-    echo "         tar xjf ${name}.tar.bz2 -C $MODELS_DIR"
-    return 1
+    log_step "Downloading ASR ONNX model ($name) from HF ..."
+    for f in "${required_files[@]}"; do
+        download "$ZIPFORMER_ONNX_HF_BASE/$f" "$target_dir/$f" || {
+            log_err "Failed to download ASR ONNX file: $f"
+            return 1
+        }
+    done
+    log_ok "ASR model ($name)"
 }
 
 setup_model_asr_rknn() {
-    # Only needed for arm64 (RK3588 NPU)
     if [ "$ARCH_NORMALIZED" != "aarch64" ]; then
-        log_skip "ASR RKNN model (x86_64, not needed)"
         return 0
     fi
     local name="zipformer-rknn"
@@ -617,31 +476,7 @@ setup_model_asr_rknn() {
     fi
 
     mkdir -p "$target_dir"
-    if [ -d "$ZIPFORMER_RKNN_LOCAL_DIR" ]; then
-        local local_missing=()
-        for f in "${required_files[@]}"; do
-            if [ ! -f "$ZIPFORMER_RKNN_LOCAL_DIR/$f" ]; then
-                local_missing+=("$f")
-            fi
-        done
-        if [ ${#local_missing[@]} -eq 0 ]; then
-            log_step "Installing ASR RKNN model ($name) from local mirror ..."
-            cp -f "$ZIPFORMER_RKNN_LOCAL_DIR"/{encoder.rknn,decoder.rknn,joiner.rknn,tokens.txt} "$target_dir/"
-            log_ok "ASR RKNN model ($name)"
-            return 0
-        fi
-        log_step "Local zipformer mirror incomplete, fallback to remote HF: missing ${local_missing[*]}"
-    fi
-
-    if [ -z "$ZIPFORMER_RKNN_HF_BASE" ]; then
-        log_err "ASR RKNN model source not found."
-        echo "       Preferred local mirror: $ZIPFORMER_RKNN_LOCAL_DIR"
-        echo "       Or set BUDDY_ZIPFORMER_RKNN_HF_BASE to your HF path, e.g.:"
-        echo "         export BUDDY_ZIPFORMER_RKNN_HF_BASE=https://huggingface.co/<org>/<repo>/resolve/main/models/asr/zipformer-rknn"
-        return 1
-    fi
-
-    log_step "Downloading ASR RKNN model ($name) from custom HF ..."
+    log_step "Downloading ASR RKNN model ($name) from HF ..."
     for f in "${required_files[@]}"; do
         download "$ZIPFORMER_RKNN_HF_BASE/$f" "$target_dir/$f" || {
             log_err "Failed to download ASR RKNN file: $f"
@@ -717,7 +552,6 @@ setup_model_tts_melo_rknn() {
     )
 
     if [ "$ARCH_NORMALIZED" != "aarch64" ]; then
-        log_skip "TTS Melo RKNN model ($name, arm64 only)"
         return 0
     fi
 
@@ -733,49 +567,17 @@ setup_model_tts_melo_rknn() {
         return 0
     fi
 
-    if [ ! -d "$MELO_TTS_REF_ROOT" ]; then
-        log_err "MeloTTS RKNN source not found: $MELO_TTS_REF_ROOT"
-        echo "       Copy these files into models/$name/:"
-        printf '         %s\n' "${required_relpaths[@]}"
-        return 0
-    fi
-
-    local ref_model_dir="$MELO_TTS_REF_ROOT/checkpoint/rknn_rk3588"
-    local ref_text_dir="$MELO_TTS_REF_ROOT/model/MeloTTS-ONNX/melo_onnx/text"
-    local ref_jieba_dir="$MELO_TTS_REF_ROOT/third_party_data/jieba"
-    local ref_pypinyin_dir="$MELO_TTS_REF_ROOT/third_party_data/pypinyin"
-
-    local required_ref_files=(
-        "$ref_model_dir/configuration.json"
-        "$ref_model_dir/tokenizer.json"
-        "$ref_model_dir/vocab.txt"
-        "$ref_model_dir/bert_lml_model.rknn"
-        "$ref_model_dir/prior_model.rknn"
-        "$ref_model_dir/flow_model.rknn"
-        "$ref_model_dir/decoder_frame31.rknn"
-        "$ref_text_dir/opencpop-strict.txt"
-        "$ref_text_dir/tone_sandhi.py"
-        "$ref_jieba_dir/dict.txt"
-        "$ref_pypinyin_dir/pinyin_dict.json"
-        "$ref_pypinyin_dir/phrases_dict.json"
-    )
-    for ref_file in "${required_ref_files[@]}"; do
-        if [ ! -f "$ref_file" ]; then
-            log_err "Missing MeloTTS RKNN file: $ref_file"
+    log_step "Downloading MeloTTS RKNN model ($name) from HF ..."
+    mkdir -p "$target_dir/checkpoint/rknn" \
+             "$target_dir/model/MeloTTS-ONNX/melo_onnx/text" \
+             "$target_dir/third_party_data/jieba" \
+             "$target_dir/third_party_data/pypinyin"
+    for rel in "${required_relpaths[@]}"; do
+        download "$MELO_TTS_HF_BASE/$rel" "$target_dir/$rel" || {
+            log_err "Failed to download MeloTTS file: $rel"
             return 1
-        fi
+        }
     done
-
-    log_step "Installing MeloTTS RKNN model set ($name) from local refs ..."
-    mkdir -p "$target_dir/checkpoint/rknn"
-    mkdir -p "$target_dir/model/MeloTTS-ONNX/melo_onnx/text"
-    mkdir -p "$target_dir/third_party_data/jieba"
-    mkdir -p "$target_dir/third_party_data/pypinyin"
-
-    cp -f "$ref_model_dir"/{configuration.json,tokenizer.json,vocab.txt,bert_lml_model.rknn,prior_model.rknn,flow_model.rknn,decoder_frame31.rknn} "$target_dir/checkpoint/rknn/"
-    cp -f "$ref_text_dir"/{opencpop-strict.txt,tone_sandhi.py} "$target_dir/model/MeloTTS-ONNX/melo_onnx/text/"
-    cp -f "$ref_jieba_dir/dict.txt" "$target_dir/third_party_data/jieba/"
-    cp -f "$ref_pypinyin_dir"/{pinyin_dict.json,phrases_dict.json} "$target_dir/third_party_data/pypinyin/"
     log_ok "TTS Melo RKNN model ($name)"
 }
 
@@ -798,61 +600,45 @@ setup_model_funasr() {
     local offline_dir="$MODELS_DIR/funasr-paraformer-zh-offline"
     local online_dir="$MODELS_DIR/funasr-paraformer-zh-online"
     local vad_dir="$MODELS_DIR/funasr-vad"
+
+    if [ -f "$offline_dir/model_quant.onnx" ] && \
+       [ -f "$online_dir/model_quant.onnx" ] && \
+       [ -f "$vad_dir/model_quant.onnx" ]; then
+        log_skip "FunASR (paraformer-zh offline + online + vad)"
+        return 0
+    fi
+
+    if ! command -v modelscope >/dev/null 2>&1; then
+        log_err "modelscope CLI not found. Install: pip install modelscope"
+        return 0
+    fi
+
+    log_step "Downloading FunASR models ..."
     local missing=0
 
-    # Offline model
-    if [ -f "$offline_dir/model_quant.onnx" ]; then
-        log_skip "FunASR offline model"
-    else
-        log_step "Downloading FunASR offline model ..."
+    if [ ! -f "$offline_dir/model_quant.onnx" ]; then
         mkdir -p "$offline_dir"
-        if command -v modelscope >/dev/null 2>&1; then
-            modelscope download \
-                --model iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx \
-                --local_dir "$offline_dir"
-        else
-            log_err "modelscope CLI not found. Install: pip install modelscope"
-            echo "         modelscope download --model iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx --local_dir $offline_dir"
-            missing=1
-        fi
+        modelscope download \
+            --model iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx \
+            --local_dir "$offline_dir" || { log_err "FunASR offline download failed"; missing=1; }
     fi
 
-    # Online streaming model
-    if [ -f "$online_dir/model_quant.onnx" ]; then
-        log_skip "FunASR online model"
-    else
-        log_step "Downloading FunASR online model ..."
+    if [ ! -f "$online_dir/model_quant.onnx" ]; then
         mkdir -p "$online_dir"
-        if command -v modelscope >/dev/null 2>&1; then
-            modelscope download \
-                --model iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online-onnx \
-                --local_dir "$online_dir"
-        else
-            log_err "modelscope CLI not found. Install: pip install modelscope"
-            echo "         modelscope download --model iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online-onnx --local_dir $online_dir"
-            missing=1
-        fi
+        modelscope download \
+            --model iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online-onnx \
+            --local_dir "$online_dir" || { log_err "FunASR online download failed"; missing=1; }
     fi
 
-    # VAD model
-    if [ -f "$vad_dir/model_quant.onnx" ]; then
-        log_skip "FunASR VAD model"
-    else
-        log_step "Downloading FunASR VAD model ..."
+    if [ ! -f "$vad_dir/model_quant.onnx" ]; then
         mkdir -p "$vad_dir"
-        if command -v modelscope >/dev/null 2>&1; then
-            modelscope download \
-                --model iic/speech_fsmn_vad_zh-cn-16k-common-onnx \
-                --local_dir "$vad_dir"
-        else
-            log_err "modelscope CLI not found. Install: pip install modelscope"
-            echo "         modelscope download --model iic/speech_fsmn_vad_zh-cn-16k-common-onnx --local_dir $vad_dir"
-            missing=1
-        fi
+        modelscope download \
+            --model iic/speech_fsmn_vad_zh-cn-16k-common-onnx \
+            --local_dir "$vad_dir" || { log_err "FunASR VAD download failed"; missing=1; }
     fi
 
-    [[ "$missing" -eq 0 ]] || return 0  # non-fatal
-    log_ok "FunASR models (offline + online + vad)"
+    [[ "$missing" -eq 0 ]] || return 0
+    log_ok "FunASR (paraformer-zh offline + online + vad)"
 }
 
 setup_model_moss_tts() {
@@ -921,103 +707,22 @@ setup_model_emotion() {
             missing+=("$f")
         fi
     done
-    local need_refresh=0
-    # Guardrail: arm64 must stay aligned with RK3588 source model blobs.
-    if [ "$ARCH_NORMALIZED" = "aarch64" ] && [ ${#missing[@]} -eq 0 ] && [ -d "$FACE_EMOTION_RK3588_REF_DIR" ]; then
-        local ref_retina="$FACE_EMOTION_RK3588_REF_DIR/retinaface_mnet_v2_fp16.rknn"
-        local ref_affect="$FACE_EMOTION_RK3588_REF_DIR/affecnet7_fp16.rknn"
-        if [ -f "$ref_retina" ] && [ -f "$ref_affect" ]; then
-            if ! cmp -s "$target_dir/retinaface_mnet_v2_fp16.rknn" "$ref_retina" || \
-               ! cmp -s "$target_dir/affecnet7_fp16.rknn" "$ref_affect"; then
-                need_refresh=1
-                log_step "Detected stale vision RKNN blobs, refreshing to RK3588 set ..."
-            fi
-        fi
-    fi
-    if [ ${#missing[@]} -eq 0 ] && [ "$need_refresh" -eq 0 ]; then
+    if [ ${#missing[@]} -eq 0 ]; then
         log_skip "Vision model ($name)"
         return 0
     fi
 
     mkdir -p "$target_dir"
-    # On arm64, always prefer local RK3588 refs for .rknn if available.
-    if [ "$ARCH_NORMALIZED" = "aarch64" ] && [ -d "$FACE_EMOTION_RK3588_REF_DIR" ] && \
-       [ -f "$FACE_EMOTION_RK3588_REF_DIR/retinaface_mnet_v2_fp16.rknn" ] && \
-       [ -f "$FACE_EMOTION_RK3588_REF_DIR/affecnet7_fp16.rknn" ]; then
-        log_step "Installing RK3588 vision RKNN files from local refs ..."
-        cp -f "$FACE_EMOTION_RK3588_REF_DIR"/{retinaface_mnet_v2_fp16.rknn,affecnet7_fp16.rknn} "$target_dir/"
-        if [ -d "$FACE_EMOTION_LOCAL_DIR" ] && \
-           [ -f "$FACE_EMOTION_LOCAL_DIR/retinaface_mnet_v2_fp16.onnx" ] && \
-           [ -f "$FACE_EMOTION_LOCAL_DIR/affecnet7_fp16.onnx" ]; then
-            cp -f "$FACE_EMOTION_LOCAL_DIR"/{retinaface_mnet_v2_fp16.onnx,affecnet7_fp16.onnx} "$target_dir/"
-        fi
-        log_ok "Vision model ($name)"
-        return 0
-    fi
-
-    if [ -d "$FACE_EMOTION_LOCAL_DIR" ]; then
-        local local_missing=()
-        for f in "${required_files[@]}"; do
-            if [ ! -f "$FACE_EMOTION_LOCAL_DIR/$f" ]; then
-                local_missing+=("$f")
-            fi
-        done
-        if [ ${#local_missing[@]} -eq 0 ]; then
-            log_step "Installing vision model ($name) from local mirror ..."
-            cp -f "$FACE_EMOTION_LOCAL_DIR"/{retinaface_mnet_v2_fp16.onnx,retinaface_mnet_v2_fp16.rknn,affecnet7_fp16.onnx,affecnet7_fp16.rknn} "$target_dir/"
-            log_ok "Vision model ($name)"
-            return 0
-        fi
-        log_step "Local face_emotion mirror incomplete, fallback to remote HF: missing ${local_missing[*]}"
-    fi
-
-    # Fallback: copy RK3588 RKNN files from local refs, ONNX from local mirror if present.
-    # This keeps vision usable on rk3588 even when local mirror is stale/incomplete.
-    if [ -d "$FACE_EMOTION_RK3588_REF_DIR" ]; then
-        local has_rknn_ref=0
-        if [ -f "$FACE_EMOTION_RK3588_REF_DIR/retinaface_mnet_v2_fp16.rknn" ] && \
-           [ -f "$FACE_EMOTION_RK3588_REF_DIR/affecnet7_fp16.rknn" ]; then
-            has_rknn_ref=1
-        fi
-        if [ "$has_rknn_ref" -eq 1 ]; then
-            if [ -f "$FACE_EMOTION_LOCAL_DIR/retinaface_mnet_v2_fp16.onnx" ] && \
-               [ -f "$FACE_EMOTION_LOCAL_DIR/affecnet7_fp16.onnx" ]; then
-                log_step "Installing vision model ($name) from rk3588 refs + local ONNX ..."
-                cp -f "$FACE_EMOTION_LOCAL_DIR"/{retinaface_mnet_v2_fp16.onnx,affecnet7_fp16.onnx} "$target_dir/"
-                cp -f "$FACE_EMOTION_RK3588_REF_DIR"/{retinaface_mnet_v2_fp16.rknn,affecnet7_fp16.rknn} "$target_dir/"
-                log_ok "Vision model ($name)"
-                return 0
-            fi
-            log_step "RK3588 refs found but ONNX pair missing in local mirror; will continue fallback chain"
-        fi
-    fi
-
-    if [ -n "$FACE_EMOTION_HF_BASE" ]; then
-        log_step "Downloading vision model ($name) from custom HF ..."
-        for f in "${required_files[@]}"; do
-            download "$FACE_EMOTION_HF_BASE/$f" "$target_dir/$f" || {
-                log_err "Failed to download vision file: $f"
-                return 1
-            }
-        done
-        log_ok "Vision model ($name)"
-        return 0
-    fi
-
-    # Legacy fallback: if tiny Haar classifier exists, keep system runnable.
-    if [ -f "$MODELS_DIR/emotion/emotion_classifier.onnx" ]; then
-        log_skip "Vision model (fallback legacy emotion_classifier.onnx)"
-        return 0
-    fi
-
-    log_err "Vision face_emotion model source not found."
-    echo "       Preferred local mirror: $FACE_EMOTION_LOCAL_DIR"
-    echo "       RK3588 refs fallback:   $FACE_EMOTION_RK3588_REF_DIR"
-    echo "       Or set BUDDY_FACE_EMOTION_HF_BASE to your HF path, e.g.:"
-    echo "         export BUDDY_FACE_EMOTION_HF_BASE=https://huggingface.co/<org>/<repo>/resolve/main/models/vision/face_emotion"
-    echo "       Backup fallback (legacy Haar):"
-    echo "         scp teammate:/path/to/models/emotion/emotion_classifier.onnx $MODELS_DIR/emotion/"
-    return 0  # non-fatal, vision module can be disabled
+    log_step "Downloading vision model ($name) from HF ..."
+    for f in "${required_files[@]}"; do
+        local subdir="onnx"
+        [[ "$f" == *.rknn ]] && subdir="rknn"
+        download "$FACE_EMOTION_HF_BASE/$subdir/$f" "$target_dir/$f" || {
+            log_err "Failed to download vision file: $f"
+            return 1
+        }
+    done
+    log_ok "Vision model ($name)"
 }
 
 # ══════════════════════════════════════════════════════════
@@ -1028,11 +733,9 @@ do_prebuilt() {
     mkdir -p "$PREBUILT_DIR"
 
     setup_submodules
-    log_stage "Prebuilt [1/2]: Local prebuilts (${ARCH})"
+    log_stage "Prebuilt Libraries (${ARCH_NORMALIZED})"
     check_thirdparty
     setup_ros2_core
-
-    log_stage "Prebuilt [2/2]: Download/build missing (${ARCH})"
     setup_onnxruntime
     setup_sherpa_onnx
     setup_onnxruntime_gpu
@@ -1072,11 +775,9 @@ check_model_ollama() {
 }
 
 do_models() {
-    log_stage "Models: Auto-download"
+    log_stage "Models (${ARCH_NORMALIZED})"
     mkdir -p "$MODELS_DIR"
-    if [ "$ARCH_NORMALIZED" = "aarch64" ]; then
-        log_step "Skipping ASR ONNX zipformer model on arm64 (use zipformer-rknn only)"
-    else
+    if [ "$ARCH_NORMALIZED" != "aarch64" ]; then
         setup_model_asr
     fi
     setup_model_asr_rknn
@@ -1088,34 +789,17 @@ do_models() {
     setup_model_moss_tts
     setup_model_emotion
 
-    log_stage "Models: Manual setup (large models)"
+    log_stage "Manual Setup (optional)"
     check_model_chattts
     check_model_ollama
-}
-
-do_models_vision() {
-    log_stage "Models: Vision only"
-    mkdir -p "$MODELS_DIR"
-    setup_model_emotion
 }
 
 # ══════════════════════════════════════════════════════════
 # Main
 # ══════════════════════════════════════════════════════════
 
-case "${1:-all}" in
-    prebuilt) do_prebuilt ;;
-    models)   do_models ;;
-    vision)   do_models_vision ;;
-    funasr)   setup_submodules; check_thirdparty; setup_model_funasr ;;
-    moss-tts) setup_onnxruntime_gpu; setup_sentencepiece; setup_model_moss_tts ;;
-    all)      do_prebuilt; do_models ;;
-    *)
-        echo "[ERROR] Unknown command: $1"
-        echo "Run '$0 --help' for usage and manual download commands."
-        exit 1
-        ;;
-esac
+do_prebuilt
+do_models
 
 echo ""
 echo "=== Done ==="
