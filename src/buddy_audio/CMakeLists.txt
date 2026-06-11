@@ -108,9 +108,14 @@ if(MOSS_TTS_AVAILABLE)
   target_include_directories(audio_component PRIVATE ${SENTENCEPIECE_INCLUDE})
   target_link_libraries(audio_component ${SENTENCEPIECE_LIB})
   target_compile_definitions(audio_component PRIVATE MOSS_TTS_AVAILABLE=1)
+  if(ORT_HAS_GPU)
+    set(_ORT_RPATH_DIR "onnxruntime-gpu")
+  else()
+    set(_ORT_RPATH_DIR "onnxruntime")
+  endif()
   set_target_properties(audio_component PROPERTIES
     BUILD_RPATH "${ORT_LIB_DIR};${SENTENCEPIECE_DIR}/lib"
-    INSTALL_RPATH "$ORIGIN/../../../prebuilt/current/onnxruntime-gpu/lib;$ORIGIN/../../../prebuilt/current/sentencepiece/lib"
+    INSTALL_RPATH "$ORIGIN/../../../prebuilt/current/${_ORT_RPATH_DIR}/lib;$ORIGIN/../../../prebuilt/current/sentencepiece/lib"
   )
 else()
   # Provide a stub so the linker doesn't fail

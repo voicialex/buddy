@@ -239,6 +239,7 @@ build_x86() {
       local ort_gpu_dir="$ROOT_DIR/prebuilt/current/onnxruntime-gpu"
       [[ -d "$ort_gpu_dir" ]] || die "onnxruntime-gpu not found at $ort_gpu_dir" \
           "Download onnxruntime-gpu and extract to prebuilt/$arch/onnxruntime-gpu/"
+      ort_dir="$ort_gpu_dir"
       ;;
     npu)
       local rknn_dir="$ROOT_DIR/prebuilt/current/rknn"

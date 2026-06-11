@@ -84,15 +84,16 @@ fi
 
 # --- Check critical models ---
 PARAMS_DIR="$INSTALL_DIR/buddy_app/share/buddy_app/params"
-AUDIO_YAML="$PARAMS_DIR/audio.yaml"
+ASR_YAML="$PARAMS_DIR/audio.asr.yaml"
+TTS_YAML="$PARAMS_DIR/audio.tts.yaml"
 MODULES_YAML="$PARAMS_DIR/modules.yaml"
 MODELS_DIR="$ROOT_DIR/models"
 MODELS_MISSING=()
-ASR_MODE=$(grep -A2 "^    asr:" "$AUDIO_YAML" | grep "mode:" | head -1 | awk '{print $2}' | tr -d '"' || echo "unknown")
-TTS_MODE=$(grep -A2 "^    tts:" "$AUDIO_YAML" | grep "mode:" | head -1 | awk '{print $2}' | tr -d '"' || echo "unknown")
-TTS_ENGINE=$(grep -A4 "^    tts:" "$AUDIO_YAML" | grep "engine:" | head -1 | awk '{print $2}' | tr -d '"' || echo "auto")
-TTS_RUNTIME=$(grep -A4 "^    tts:" "$AUDIO_YAML" | grep "runtime:" | head -1 | awk '{print $2}' | tr -d '"' || echo "auto")
-KWS_ENABLE=$(grep -A2 "^    kws:" "$AUDIO_YAML" | grep "enable:" | head -1 | awk '{print $2}' | tr -d '"' || echo "false")
+ASR_MODE=$(grep -A2 "^    asr:" "$ASR_YAML" | grep "mode:" | head -1 | awk '{print $2}' | tr -d '"' || echo "unknown")
+TTS_MODE=$(grep -A2 "^    tts:" "$TTS_YAML" | grep "mode:" | head -1 | awk '{print $2}' | tr -d '"' || echo "unknown")
+TTS_ENGINE=$(grep -A4 "^    tts:" "$TTS_YAML" | grep "engine:" | head -1 | awk '{print $2}' | tr -d '"' || echo "auto")
+TTS_RUNTIME=$(grep -A4 "^    tts:" "$TTS_YAML" | grep "runtime:" | head -1 | awk '{print $2}' | tr -d '"' || echo "auto")
+KWS_ENABLE=$(grep -A2 "^    kws:" "$ASR_YAML" | grep "enable:" | head -1 | awk '{print $2}' | tr -d '"' || echo "false")
 VISION_ENABLE=$(grep -A10 "^modules:" "$MODULES_YAML" 2>/dev/null | grep "vision:" | head -1 | awk '{print $2}' | tr -d '"' || echo "true")
 
 # ASR local mode: accept either sherpa (ONNX) or native (RKNN) model set
@@ -128,7 +129,7 @@ fi
 if [[ "$TTS_MODE" == "local" ]]; then
   if [[ "$TTS_ENGINE" == "melo-rknn" || ( "$TTS_ENGINE" == "native" && "$TTS_RUNTIME" == "rknnruntime" ) ]]; then
     MELO_MODEL_DIR=$(
-      grep -A20 -E "^[[:space:]]*(melo|melo_rknn):" "$AUDIO_YAML" \
+      grep -A20 -E "^[[:space:]]*(melo|melo_rknn):" "$TTS_YAML" \
         | grep -E "^[[:space:]]+model_dir:[[:space:]]*" \
         | grep -v "^[[:space:]]*#" \
         | head -1 \
@@ -143,7 +144,7 @@ if [[ "$TTS_MODE" == "local" ]]; then
       MODELS_MISSING+=("TTS Melo text resource ($MELO_MODEL_DIR/model/MeloTTS-ONNX/melo_onnx/text/opencpop-strict.txt)")
   elif [[ "$TTS_ENGINE" == "moss-onnx" || "$TTS_ENGINE" == "moss" || "$TTS_ENGINE" == "native" ]]; then
     MOSS_MODEL_DIR=$(
-      grep -A20 -E "^[[:space:]]*(moss|moss_onnx):" "$AUDIO_YAML" \
+      grep -A20 -E "^[[:space:]]*(moss|moss_onnx):" "$TTS_YAML" \
         | grep -E "^[[:space:]]+model_dir:[[:space:]]*" \
         | grep -v "^[[:space:]]*#" \
         | head -1 \
@@ -156,14 +157,14 @@ if [[ "$TTS_MODE" == "local" ]]; then
       MODELS_MISSING+=("TTS MOSS ($MOSS_MODEL_DIR/MOSS-TTS-Nano-100M-ONNX/moss_tts_global_shared.data)")
   else
     TTS_MODEL_DIR=$(
-      grep -A60 -E "^[[:space:]]*(sherpa|sherpa_onnx):" "$AUDIO_YAML" \
+      grep -A60 -E "^[[:space:]]*(sherpa|sherpa_onnx):" "$TTS_YAML" \
         | grep -E "^[[:space:]]+model_dir:[[:space:]]*" \
         | grep -v "^[[:space:]]*#" \
         | head -1 \
         | awk -F: '{v=$2; gsub(/^[[:space:]]+/, "", v); gsub(/"/, "", v); print v}' || true
     )
     TTS_MODEL_FILE=$(
-      grep -A60 -E "^[[:space:]]*(sherpa|sherpa_onnx):" "$AUDIO_YAML" \
+      grep -A60 -E "^[[:space:]]*(sherpa|sherpa_onnx):" "$TTS_YAML" \
         | grep -E "^[[:space:]]+model:[[:space:]]*" \
         | grep -v "^[[:space:]]*#" \
         | head -1 \
@@ -188,4 +189,4 @@ if [[ ${#MODELS_MISSING[@]} -gt 0 ]]; then
 fi
 
 echo "[INFO] Launching buddy_main..."
-exec "$BUDDY_MAIN" "$@" 2>&1 | sed -E 's/\[([0-9]+\.[0-9]{3})[0-9]{6}\]/[\1]/g'
+exec "$BUDDY_MAIN" --ros-args --log-level v4l2_camera:=warn "$@" 2>&1 | sed -E 's/\[([0-9]+\.[0-9]{3})[0-9]{6}\]/[\1]/g'

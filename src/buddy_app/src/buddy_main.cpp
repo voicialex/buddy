@@ -251,7 +251,9 @@ int main(int argc, char** argv) {
                 kws_enabled = node.as<bool>(kws_enabled);
             }
         }
-    } catch (...) {}
+    } catch (const std::exception& e) {
+        RCLCPP_WARN(logger, "Failed to read audio params for KWS banner: %s", e.what());
+    }
 
     if (kws_enabled) {
         // Read wake word from params/keywords.txt (format: "tokens @DisplayName")

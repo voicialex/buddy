@@ -14,7 +14,14 @@ find_package(sensor_msgs REQUIRED)
 find_package(buddy_interfaces REQUIRED)
 
 add_library(
-  brain_component SHARED src/brain_node.cpp src/sentence_segmenter.cpp src/emotion_trigger.cpp src/asr_filter.cpp
+  brain_component SHARED
+  src/brain_node.cpp
+  src/sentence_segmenter.cpp
+  src/emotion_trigger.cpp
+  src/asr_filter.cpp
+  src/asr_post_filter.cpp
+  src/session_context.cpp
+  src/image_capture_coordinator.cpp
 )
 target_include_directories(
   brain_component PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>
@@ -49,6 +56,9 @@ if(BUILD_TESTING)
     src/sentence_segmenter.cpp
     src/emotion_trigger.cpp
     src/asr_filter.cpp
+    src/asr_post_filter.cpp
+    src/session_context.cpp
+    src/image_capture_coordinator.cpp
   )
   target_include_directories(test_brain_node PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
   target_compile_features(test_brain_node PUBLIC cxx_std_17)

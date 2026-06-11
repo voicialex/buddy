@@ -37,6 +37,9 @@ private:
     std::unique_ptr<SpeechRecognizer> recognizer_;
     std::unique_ptr<TtsPlayer> tts_player_;
 
+    // 麦克风采集线程：阻塞 ALSA read，绕过 ROS executor。
+    // 边界：仅 publish 消息（线程安全），不等待 service response。
+    // 风险：若未来需在 capture_loop 内调用 service，会与 executor 死锁。
     std::thread capture_thread_;
     std::atomic<bool> running_{false};
     std::atomic<int> cooldown_chunks_remaining_{0};
