@@ -105,6 +105,12 @@ ZIPFORMER_RKNN_HF_BASE="${BUDDY_ZIPFORMER_RKNN_HF_BASE:-https://huggingface.co/v
 ZIPFORMER_ONNX_HF_BASE="${BUDDY_ZIPFORMER_ONNX_HF_BASE:-https://huggingface.co/voicialex/zipformer-asr-rknn/resolve/main/onnx}"
 FACE_EMOTION_HF_BASE="${BUDDY_FACE_EMOTION_HF_BASE:-https://huggingface.co/voicialex/face-emotion-rknn/resolve/main}"
 
+# GitHub Release fallback (override via BUDDY_* env vars)
+THIRDPARTY_RELEASE_TAG="${BUDDY_THIRDPARTY_TAG:-v1.0.0}"
+THIRDPARTY_RELEASE_URL="https://github.com/voicialex/thirdparty/releases/download/${THIRDPARTY_RELEASE_TAG}"
+ROS2_RELEASE_TAG="${BUDDY_ROS2_TAG:-v2026.06.1}"
+ROS2_RELEASE_URL="https://github.com/voicialex/ros2_core/releases/download/${ROS2_RELEASE_TAG}"
+
 ROS2_TARBALL_PATH=""
 if [ -f "$ROS2_CORE_BASE/humble/${ARCH_NORMALIZED}/ros2-humble-${ARCH_NORMALIZED}.tar.gz" ]; then
     ROS2_TARBALL_PATH="$ROS2_CORE_BASE/humble/${ARCH_NORMALIZED}/ros2-humble-${ARCH_NORMALIZED}.tar.gz"
@@ -245,8 +251,21 @@ check_thirdparty() {
         return 0
     fi
 
+    # Fallback: download from GitHub Release
+    local THIRDPARTY_URL="${THIRDPARTY_RELEASE_URL}/thirdparty-${ARCH_NORMALIZED}.tar.gz"
+    local THIRDPARTY_TMP="/tmp/thirdparty-${ARCH_NORMALIZED}-${THIRDPARTY_RELEASE_TAG}.tar.gz"
+    log_step "Downloading thirdparty from GitHub Release (${THIRDPARTY_RELEASE_TAG}) ..."
+    if download "$THIRDPARTY_URL" "$THIRDPARTY_TMP"; then
+        tar xzf "$THIRDPARTY_TMP" -C "$PREBUILT_DIR"
+        rm -f "$THIRDPARTY_TMP"
+        log_ok "Third-party (funasr + opencv)"
+        return 0
+    fi
+    rm -f "$THIRDPARTY_TMP"
+
     log_step "Missing third-party prebuilt: ${missing[*]}"
     echo "       Run: cd ../thirdparty && ./build.sh -t ${ARCH_NORMALIZED}"
+    echo "       Or set: BUDDY_THIRDPARTY_TAG=<tag> to use a different release"
     return 0
 }
 
@@ -259,18 +278,35 @@ setup_ros2_core() {
         log_skip "ROS 2 Core"
         return 0
     fi
-    if [ -z "$ROS2_TARBALL_PATH" ]; then
-        log_err "No ROS 2 tarball found for ${ARCH_NORMALIZED}"
-        echo "       Searched:"
-        echo "         - $ROS2_CORE_BASE/humble/${ARCH_NORMALIZED}/ros2-humble-${ARCH_NORMALIZED}.tar.gz"
-        echo "         - $ROS2_CORE_BASE/jazzy/${ARCH_NORMALIZED}/ros2-jazzy-${ARCH_NORMALIZED}.tar.gz"
-        echo "       Run: cd ~/buddy_ws/ros2_core && ./scripts/docker_build.sh humble --arch ${ARCH_NORMALIZED}"
-        return 1
+    if [ -n "$ROS2_TARBALL_PATH" ]; then
+        log_step "Extracting ROS 2 Core from $(basename "$ROS2_TARBALL_PATH") ..."
+        mkdir -p "$PREBUILT_DIR/ros2_core"
+        tar xzf "$ROS2_TARBALL_PATH" -C "$PREBUILT_DIR/ros2_core"
+        log_ok "ROS 2 Core"
+        return 0
     fi
-    log_step "Extracting ROS 2 Core from $(basename "$ROS2_TARBALL_PATH") ..."
-    mkdir -p "$PREBUILT_DIR/ros2_core"
-    tar xzf "$ROS2_TARBALL_PATH" -C "$PREBUILT_DIR/ros2_core"
-    log_ok "ROS 2 Core"
+
+    # Fallback: download from GitHub Release
+    local ROS2_URL="${ROS2_RELEASE_URL}/ros2-humble-${ARCH_NORMALIZED}.tar.gz"
+    local ROS2_TMP="/tmp/ros2-humble-${ARCH_NORMALIZED}-${ROS2_RELEASE_TAG}.tar.gz"
+    log_step "Downloading ROS 2 Core from GitHub Release (${ROS2_RELEASE_TAG}) ..."
+    if download "$ROS2_URL" "$ROS2_TMP"; then
+        mkdir -p "$PREBUILT_DIR/ros2_core"
+        tar xzf "$ROS2_TMP" -C "$PREBUILT_DIR/ros2_core"
+        rm -f "$ROS2_TMP"
+        log_ok "ROS 2 Core"
+        return 0
+    fi
+    rm -f "$ROS2_TMP"
+
+    log_err "No ROS 2 tarball found for ${ARCH_NORMALIZED}"
+    echo "       Searched:"
+    echo "         - $ROS2_CORE_BASE/humble/${ARCH_NORMALIZED}/ros2-humble-${ARCH_NORMALIZED}.tar.gz"
+    echo "         - $ROS2_CORE_BASE/jazzy/${ARCH_NORMALIZED}/ros2-jazzy-${ARCH_NORMALIZED}.tar.gz"
+    echo "         - $ROS2_URL"
+    echo "       Run: cd ~/buddy_ws/ros2_core && ./scripts/docker_build.sh humble --arch ${ARCH_NORMALIZED}"
+    echo "       Or set: BUDDY_ROS2_TAG=<tag> to use a different release"
+    return 1
 }
 
 setup_onnxruntime() {
