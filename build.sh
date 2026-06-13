@@ -126,12 +126,13 @@ build_arm64() {
   # Build/package app every run.
   DOCKER_BUILDKIT=1 docker build \
     "${cache_flag[@]}" \
+    --build-arg TARGET_ARCH=arm64 \
     --build-arg VERSION="$version" \
     --build-arg PARALLEL_WORKERS="$parallel" \
     --build-arg DEVICE="$DEVICE" \
     --target export-package \
     --output "type=local,dest=$output_dir/" \
-    -f "$DOCKER_DIR/Dockerfile.arm64" \
+    -f "$DOCKER_DIR/Dockerfile" \
     "$ROOT_DIR"
 
   # Build models tar only when missing (manual delete can force refresh).
@@ -139,12 +140,13 @@ build_arm64() {
     echo "[INFO] Models tarball missing, building once: $(basename "$models_file")"
     DOCKER_BUILDKIT=1 docker build \
       "${cache_flag[@]}" \
+      --build-arg TARGET_ARCH=arm64 \
       --build-arg VERSION="$version" \
       --build-arg PARALLEL_WORKERS="$parallel" \
       --build-arg DEVICE="$DEVICE" \
       --target export-models \
       --output "type=local,dest=$output_dir/" \
-      -f "$DOCKER_DIR/Dockerfile.arm64" \
+      -f "$DOCKER_DIR/Dockerfile" \
       "$ROOT_DIR"
   else
     echo "[INFO] Reusing existing models tarball: $(basename "$models_file")"

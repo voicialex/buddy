@@ -284,6 +284,9 @@ void BrainNode::on_asr_text(const std_msgs::msg::String& msg) {
     }
 
     if (state_ == State::IDLE) {
+        if (session_.metrics().wake_at == TurnMetrics::TimePoint{}) {
+            session_.metrics().wake_at = std::chrono::steady_clock::now();
+        }
         transition(State::LISTENING);
     } else if (state_ != State::LISTENING) {
         RCLCPP_INFO(get_logger(), "ASR barge-in, cancelling current turn");
@@ -408,8 +411,10 @@ void BrainNode::transition(State new_state) {
 
 void BrainNode::request_inference(uint8_t trigger_type, const std::string& user_text) {
     auto pending_wake_at = session_.metrics().wake_at;
+    auto pending_asr_at = session_.metrics().asr_at;
     session_.start_turn();
     session_.metrics().wake_at = pending_wake_at;
+    session_.metrics().asr_at = pending_asr_at;
 
     segmenter_.reset();
     sentence_index_ = 0;

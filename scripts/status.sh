@@ -11,6 +11,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
+# Detect actual runtime hardware from prebuilt libs
+PREBUILT_CURRENT="$BASE_DIR/prebuilt/current"
+RUNTIME_HW="cpu"
+if [[ -d "$PREBUILT_CURRENT/rknn" ]]; then
+    RUNTIME_HW="npu"
+elif [[ -d "$PREBUILT_CURRENT/onnxruntime-gpu" ]]; then
+    RUNTIME_HW="gpu"
+fi
+
 COL_GREEN="\033[32m"
 COL_RED="\033[31m"
 COL_YELLOW="\033[33m"
@@ -246,6 +255,8 @@ asr_hw="unknown"
 if [[ "$asr_mode" == "local" ]]; then
     if [[ "$asr_runtime" == "rknnruntime" ]]; then
         asr_hw="NPU"
+    elif [[ "$RUNTIME_HW" == "gpu" ]]; then
+        asr_hw="GPU"
     else
         asr_hw="CPU"
     fi
@@ -257,6 +268,8 @@ tts_hw="unknown"
 if [[ "$tts_mode" == "local" ]]; then
     if [[ "$tts_runtime" == "rknnruntime" ]]; then
         tts_hw="NPU"
+    elif [[ "$RUNTIME_HW" == "gpu" ]]; then
+        tts_hw="GPU"
     else
         tts_hw="CPU"
     fi
@@ -269,7 +282,11 @@ if [[ "$inference_mode" == "local_route" || "$inference_mode" == "local_only" ||
     if [[ "$inference_backend" == "rk_llm" ]]; then
         inference_hw="NPU"
     elif [[ "$inference_backend" == "ollama" || "$inference_backend" == "vllm" ]]; then
-        inference_hw="CPU"
+        if [[ "$BUILD_DEVICE" == "gpu" ]]; then
+            inference_hw="GPU"
+        else
+            inference_hw="CPU"
+        fi
     fi
 fi
 
@@ -295,6 +312,8 @@ vision_hw="off"
 if [[ "$vision_enabled" == "true" ]]; then
     if [[ "$vision_runtime" == "rknnruntime" ]]; then
         vision_hw="NPU"
+    elif [[ "$RUNTIME_HW" == "gpu" ]]; then
+        vision_hw="GPU"
     else
         vision_hw="CPU"
     fi

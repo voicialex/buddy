@@ -1,23 +1,30 @@
 #include "buddy_brain/session_context.hpp"
 
+#include <cstdio>
 #include <sstream>
+
+static const char* fmt_sec(double ms) {
+    static thread_local char buf[16];
+    std::snprintf(buf, sizeof(buf), "%.3fs", ms / 1000.0);
+    return buf;
+}
 
 std::string TurnMetrics::to_log_string() const {
     std::ostringstream ss;
     ss << "asr=";
-    if (asr_latency_ms() >= 0) ss << static_cast<int>(asr_latency_ms()) << "ms";
+    if (asr_latency_ms() >= 0) ss << fmt_sec(asr_latency_ms());
     else ss << "n/a";
     ss << " llm_ft=";
-    if (llm_first_token_ms() >= 0) ss << static_cast<int>(llm_first_token_ms()) << "ms";
+    if (llm_first_token_ms() >= 0) ss << fmt_sec(llm_first_token_ms());
     else ss << "n/a";
     ss << " 1st_sent=";
-    if (first_sentence_ms() >= 0) ss << static_cast<int>(first_sentence_ms()) << "ms";
+    if (first_sentence_ms() >= 0) ss << fmt_sec(first_sentence_ms());
     else ss << "n/a";
     ss << " tts=";
-    if (tts_total_ms() >= 0) ss << static_cast<int>(tts_total_ms()) << "ms";
+    if (tts_total_ms() >= 0) ss << fmt_sec(tts_total_ms());
     else ss << "n/a";
     ss << " e2e=";
-    if (end_to_end_ms() >= 0) ss << static_cast<int>(end_to_end_ms()) << "ms";
+    if (end_to_end_ms() >= 0) ss << fmt_sec(end_to_end_ms());
     else ss << "n/a";
     return ss.str();
 }

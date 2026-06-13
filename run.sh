@@ -64,10 +64,15 @@ source "$SETUP"
 set -u
 
 # --- Runtime shared libraries (prebuilt deps) ---
+ORT_LIB_DIR="onnxruntime"
+if [[ -d "$PREBUILT_CURRENT/onnxruntime-gpu/lib" ]]; then
+  ORT_LIB_DIR="onnxruntime-gpu"
+fi
+
 LIB_PATHS=()
 for d in \
   "$PREBUILT_CURRENT/opencv/lib" \
-  "$PREBUILT_CURRENT/onnxruntime/lib" \
+  "$PREBUILT_CURRENT/$ORT_LIB_DIR/lib" \
   "$PREBUILT_CURRENT/sherpa-onnx/lib" \
   "$PREBUILT_CURRENT/rknn/lib"
 do
