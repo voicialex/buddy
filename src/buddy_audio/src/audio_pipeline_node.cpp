@@ -3,6 +3,23 @@
 #include "buddy_audio/audio_config.hpp"
 #include "buddy_audio/engine_factory.hpp"
 
+#include <cmath>
+
+namespace {
+
+float rms_of(const std::vector<float>& samples) {
+    if (samples.empty()) {
+        return 0.0f;
+    }
+    double sum = 0.0;
+    for (float v : samples) {
+        sum += static_cast<double>(v) * static_cast<double>(v);
+    }
+    return static_cast<float>(std::sqrt(sum / static_cast<double>(samples.size())));
+}
+
+}  // namespace
+
 AudioPipelineNode::AudioPipelineNode(const rclcpp::NodeOptions& options)
     : rclcpp_lifecycle::LifecycleNode("audio", options) {}
 
@@ -106,16 +123,48 @@ CallbackReturn AudioPipelineNode::on_activate(const rclcpp_lifecycle::State&) {
 }
 
 void AudioPipelineNode::capture_loop() {
+    size_t diag_chunk_index = 0;
     while (running_) {
         auto chunk = capture_->read_chunk();
         if (chunk.empty()) {
             continue;
         }
+        ++diag_chunk_index;
+
+        const float raw_rms = rms_of(chunk);
+        AudioPreprocessResult preprocess;
         if (preprocessor_ && preprocessor_->is_enabled()) {
-            auto preprocess = preprocessor_->process_capture_chunk(&chunk, kws_enabled_);
+            preprocess = preprocessor_->process_capture_chunk(&chunk, kws_enabled_);
+            if (diag_chunk_index % 10 == 0) {
+                RCLCPP_INFO(get_logger(),
+                            "[ASR_DIAG] capture chunk=%zu raw_rms=%.5f post_rms=%.5f preprocess_voice=%d pass=%d "
+                            "cooldown=%d wake_guard=%d kws=%d",
+                            diag_chunk_index,
+                            raw_rms,
+                            rms_of(chunk),
+                            preprocess.has_voice,
+                            preprocess.should_pass,
+                            cooldown_chunks_remaining_.load(),
+                            wake_guard_chunks_remaining_.load(),
+                            kws_enabled_);
+            }
             if (!preprocess.should_pass) {
+                RCLCPP_INFO(get_logger(),
+                            "[ASR_DIAG] capture dropped chunk=%zu raw_rms=%.5f post_rms=%.5f preprocess_voice=%d",
+                            diag_chunk_index,
+                            raw_rms,
+                            rms_of(chunk),
+                            preprocess.has_voice);
                 continue;
             }
+        } else if (diag_chunk_index % 10 == 0) {
+            RCLCPP_INFO(get_logger(),
+                        "[ASR_DIAG] capture chunk=%zu raw_rms=%.5f preprocess=off cooldown=%d wake_guard=%d kws=%d",
+                        diag_chunk_index,
+                        raw_rms,
+                        cooldown_chunks_remaining_.load(),
+                        wake_guard_chunks_remaining_.load(),
+                        kws_enabled_);
         }
 
         // Handle cooldown countdown after TTS done
