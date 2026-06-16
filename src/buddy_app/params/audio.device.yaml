@@ -8,6 +8,6 @@ audio:
     #   Use `plughw` (not `hw`) for automatic sample-rate conversion (16kHz).
     # mic_device: "plughw:CARD=Headset,DEV=0"      # desktop headset
     # speaker_device: "plughw:CARD=Headset,DEV=0"  # desktop headset
-    mic_device: "plughw:CARD=Device,DEV=0"         # rk3588 USB PnP Sound Device
-    speaker_device: "plughw:CARD=Device,DEV=0"     # rk3588 USB PnP Sound Device
+    mic_device: "plughw:CARD=5,DEV=0"         # rk3588 USB PnP Sound Device
+    speaker_device: "plughw:CARD=5,DEV=0"     # rk3588 USB PnP Sound Device
     sample_rate: 16000
