@@ -36,7 +36,7 @@ check_port() {
 
 check_http() {
     local url="$1"
-    curl -sf -o /dev/null --max-time 2 "$url" 2>/dev/null
+    env -u LD_LIBRARY_PATH curl -sf -o /dev/null --max-time 2 "$url" 2>/dev/null
 }
 
 # ── Process management ──
@@ -131,7 +131,7 @@ ensure_venv() {
     local req_hash=""
     local state_file="$venv_dir/.requirements.sha256"
 
-    if [ ! -d "$venv_dir" ]; then
+    if [ ! -f "$venv_dir/bin/activate" ]; then
         log_step "Creating Python venv at $venv_dir ..."
         python3 -m venv --system-site-packages "$venv_dir"
         log_ok "Python venv created"
@@ -152,9 +152,27 @@ ensure_venv() {
         req_hash="$(cksum "$requirements" | awk '{print $1":"$2}')"
     fi
 
-    if [ "${BUDDY_FORCE_PIP_SYNC:-0}" = "1" ] || [ ! -f "$state_file" ] || [ "$(cat "$state_file" 2>/dev/null || true)" != "$req_hash" ]; then
+    local needs_install=true
+    if [ "${BUDDY_FORCE_PIP_SYNC:-0}" != "1" ] && [ -f "$state_file" ] && [ "$(cat "$state_file" 2>/dev/null || true)" = "$req_hash" ]; then
+        # Hash matches — verify at least one top-level package is actually importable
+        local first_pkg
+        first_pkg="$(grep -v '^\s*#' "$requirements" | grep -v '^\s*$' | head -1 | sed 's/[>=<\[].*//' | tr '[:upper:]' '[:lower:]' | tr '-' '_')"
+        if [ -n "$first_pkg" ] && python3 -c "import $first_pkg" 2>/dev/null; then
+            needs_install=false
+        fi
+    fi
+
+    if [ "$needs_install" = true ]; then
         log_step "Installing Python dependencies..."
-        python3 -m pip install --progress-bar on -r "$requirements" || true
+        # Check for pre-downloaded wheels (offline install from deb package)
+        local wheels_dir
+        wheels_dir="$(dirname "$requirements")/wheels"
+        if [ -d "$wheels_dir" ] && [ -n "$(ls -A "$wheels_dir"/*.whl 2>/dev/null)" ]; then
+            log_step "Installing from local wheels ($wheels_dir)..."
+            python3 -m pip install --no-index --find-links="$wheels_dir" -r "$requirements" --progress-bar on || true
+        else
+            python3 -m pip install --progress-bar on -r "$requirements" || true
+        fi
         echo "$req_hash" > "$state_file"
     else
         log_skip "Python dependencies"

@@ -14,7 +14,8 @@ set(CMAKE_PREFIX_PATH
     /opt/ros2_core
     /opt/prebuilt/onnxruntime
     /opt/prebuilt/sherpa-onnx
-    /opt/opencv
+    /opt/prebuilt/opencv
+    /opt/prebuilt/libcurl
 )
 
 # Don't restrict find_path/find_library — multiarch puts arm64 libs

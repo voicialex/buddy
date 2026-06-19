@@ -23,8 +23,9 @@ if [[ -f "$PROJECT_DIR/etc/buddy.env" ]]; then
     set -a; source "$PROJECT_DIR/etc/buddy.env"; set +a
 fi
 
-# Set LD_LIBRARY_PATH so flask_server.py can find librkllmrt.so
-export LD_LIBRARY_PATH="$PROJECT_DIR/lib:$PROJECT_DIR/lib/sherpa:$PROJECT_DIR/lib/funasr:${LD_LIBRARY_PATH:-}"
+# LD_LIBRARY_PATH is set inline when launching Python services (start_llm_service, start_rkllm)
+# to avoid polluting system tools like curl with bundled libcurl.
+BUDDY_LD_LIBRARY_PATH="$PROJECT_DIR/lib:$PROJECT_DIR/lib/sherpa:$PROJECT_DIR/lib/funasr:${LD_LIBRARY_PATH:-}"
 
 # ── Ollama config ──
 OLLAMA_LOG="/tmp/buddy-ollama.log"
@@ -367,7 +368,7 @@ start_rkllm() {
 
     log_step "Starting RKLLM server ..."
     : > "$RKLLM_LOG"
-    nohup bash -lc "$rkllm_cmd" > "$RKLLM_LOG" 2>&1 &
+    nohup env LD_LIBRARY_PATH="$BUDDY_LD_LIBRARY_PATH" bash -lc "$rkllm_cmd" > "$RKLLM_LOG" 2>&1 &
     wait_for_rkllm "Timeout starting RKLLM server. Check $RKLLM_LOG"
 }
 
@@ -414,7 +415,7 @@ start_llm_service() {
 
     log_step "Starting LLM server on :$LLM_PORT ..."
     : > "$LLM_LOG"
-    nohup python3 "$SERVICE_DIR/server.py" > "$LLM_LOG" 2>&1 &
+    nohup env LD_LIBRARY_PATH="$BUDDY_LD_LIBRARY_PATH" python3 "$SERVICE_DIR/server.py" > "$LLM_LOG" 2>&1 &
 
     if wait_for_ready "check_http http://127.0.0.1:$LLM_PORT/ready" 30 "LLM server"; then
         log_ok "LLM server ready"
@@ -474,6 +475,7 @@ case "${1:-start}" in
         ensure_local_backend_runtime "$local_backend"
         ensure_venv "$VENV_DIR" "$SERVICE_DIR/requirements.txt"
         log_step "Starting LLM server in foreground on :$LLM_PORT"
+        export LD_LIBRARY_PATH="$BUDDY_LD_LIBRARY_PATH"
         exec python3 "$SERVICE_DIR/server.py"
         ;;
     start)

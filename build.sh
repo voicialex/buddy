@@ -59,7 +59,7 @@ die() {
 }
 
 # ============================================================
-# arm64 build (Docker + QEMU)
+# arm64 build (Docker cross-compile)
 # ============================================================
 build_arm64() {
   local version="${VERSION:-1.0.0}"
@@ -68,7 +68,7 @@ build_arm64() {
   local deb_file="$output_dir/buddy-robot_${version}_arm64_${DEVICE}.deb"
   local models_file="$output_dir/buddy-models_${version}_${DEVICE}.tar.gz"
 
-  echo "[INFO] Building buddy-robot_${version}_arm64_${DEVICE}.deb (cross-compile, no QEMU)"
+  echo "[INFO] Building buddy-robot_${version}_arm64_${DEVICE}.deb (cross-compile)"
   echo "[INFO] Device target: $DEVICE"
 
   # Ensure prebuilt deps exist (auto-install if missing)

@@ -282,7 +282,7 @@ if [[ "$inference_mode" == "local_route" || "$inference_mode" == "local_only" ||
     if [[ "$inference_backend" == "rk_llm" ]]; then
         inference_hw="NPU"
     elif [[ "$inference_backend" == "ollama" || "$inference_backend" == "vllm" ]]; then
-        if [[ "$BUILD_DEVICE" == "gpu" ]]; then
+        if [[ "${BUILD_DEVICE:-${BUDDY_TARGET_DEVICE:-cpu}}" == "gpu" ]]; then
             inference_hw="GPU"
         else
             inference_hw="CPU"
