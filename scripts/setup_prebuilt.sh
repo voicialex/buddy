@@ -51,7 +51,10 @@ Models (auto-downloaded, skipped if present):
            MOSS-TTS, Vision (face_emotion)
   Manual   ChatTTS (~1.2GB, auto on first run), Ollama (~4.4GB), RKLLM (~3.5GB)
 
-Override HF source via env vars:
+Override via env vars:
+  BUDDY_ROS2_TAG=<tag>         ROS 2 Core release tag (default: v2026.06.2)
+  BUDDY_ROS2_DISTRO=<distro>   ROS 2 distro (default: humble)
+  BUDDY_THIRDPARTY_TAG=<tag>   Third-party release tag (default: v2026.06.16)
   BUDDY_ZIPFORMER_RKNN_HF_BASE  BUDDY_ZIPFORMER_ONNX_HF_BASE
   BUDDY_MELO_TTS_HF_BASE        BUDDY_FACE_EMOTION_HF_BASE
 
@@ -59,6 +62,8 @@ Examples:
   ./scripts/setup_prebuilt.sh                              # Everything (host)
   ./scripts/setup_prebuilt.sh --arch arm64                 # Cross-compile
   ./scripts/setup_prebuilt.sh --proxy http://127.0.0.1:7890
+  BUDDY_ROS2_TAG=v2026.06.2 ./scripts/setup_prebuilt.sh   # Pin release version
+  BUDDY_ROS2_DISTRO=jazzy ./scripts/setup_prebuilt.sh     # Use Jazzy instead of Humble
 EOF
 }
 
@@ -95,6 +100,7 @@ cd "$PROJECT_DIR"
 # ══════════════════════════════════════════════════════════
 
 # ROS 2 tarball
+ROS2_DISTRO="${BUDDY_ROS2_DISTRO:-humble}"
 ROS2_CORE_BASE="$PROJECT_DIR/../ros2_core/output"
 
 # RKNN-LLM (external repo at workspace root)
@@ -106,16 +112,14 @@ ZIPFORMER_ONNX_HF_BASE="${BUDDY_ZIPFORMER_ONNX_HF_BASE:-https://huggingface.co/v
 FACE_EMOTION_HF_BASE="${BUDDY_FACE_EMOTION_HF_BASE:-https://huggingface.co/voicialex/face-emotion-rknn/resolve/main}"
 
 # GitHub Release fallback (override via BUDDY_* env vars)
-THIRDPARTY_RELEASE_TAG="${BUDDY_THIRDPARTY_TAG:-v1.0.0}"
+THIRDPARTY_RELEASE_TAG="${BUDDY_THIRDPARTY_TAG:-v2026.06.16}"
 THIRDPARTY_RELEASE_URL="https://github.com/voicialex/thirdparty/releases/download/${THIRDPARTY_RELEASE_TAG}"
-ROS2_RELEASE_TAG="${BUDDY_ROS2_TAG:-v2026.06.1}"
+ROS2_RELEASE_TAG="${BUDDY_ROS2_TAG:-v2026.06.2}"
 ROS2_RELEASE_URL="https://github.com/voicialex/ros2_core/releases/download/${ROS2_RELEASE_TAG}"
 
 ROS2_TARBALL_PATH=""
-if [ -f "$ROS2_CORE_BASE/humble/${ARCH_NORMALIZED}/ros2-humble-${ARCH_NORMALIZED}.tar.gz" ]; then
-    ROS2_TARBALL_PATH="$ROS2_CORE_BASE/humble/${ARCH_NORMALIZED}/ros2-humble-${ARCH_NORMALIZED}.tar.gz"
-elif [ -f "$ROS2_CORE_BASE/jazzy/${ARCH_NORMALIZED}/ros2-jazzy-${ARCH_NORMALIZED}.tar.gz" ]; then
-    ROS2_TARBALL_PATH="$ROS2_CORE_BASE/jazzy/${ARCH_NORMALIZED}/ros2-jazzy-${ARCH_NORMALIZED}.tar.gz"
+if [ -f "$ROS2_CORE_BASE/$ROS2_DISTRO/${ARCH_NORMALIZED}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz" ]; then
+    ROS2_TARBALL_PATH="$ROS2_CORE_BASE/$ROS2_DISTRO/${ARCH_NORMALIZED}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz"
 fi
 
 # ONNX Runtime
@@ -172,7 +176,8 @@ enable_proxy_for_run
 download() {
     local url="$1" dest="$2"
     # Keep partial file on network failure so next run can resume with --continue.
-    wget --timeout=0 --tries=3 --continue --show-progress --progress=bar:force -O "$dest" "$url" || return 1
+    wget -q --timeout=0 --tries=3 --continue --show-progress --progress=bar:force \
+        -O "$dest" "$url" || return 1
     if [ ! -s "$dest" ]; then
         rm -f "$dest"
         return 1
@@ -287,9 +292,9 @@ setup_ros2_core() {
     fi
 
     # Fallback: download from GitHub Release
-    local ROS2_URL="${ROS2_RELEASE_URL}/ros2-humble-${ARCH_NORMALIZED}.tar.gz"
-    local ROS2_TMP="/tmp/ros2-humble-${ARCH_NORMALIZED}-${ROS2_RELEASE_TAG}.tar.gz"
-    log_step "Downloading ROS 2 Core from GitHub Release (${ROS2_RELEASE_TAG}) ..."
+    local ROS2_URL="${ROS2_RELEASE_URL}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz"
+    local ROS2_TMP="/tmp/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}-${ROS2_RELEASE_TAG}.tar.gz"
+    log_step "Downloading ROS 2 Core from GitHub Release (${ROS2_RELEASE_TAG}, ${ROS2_DISTRO}) ..."
     if download "$ROS2_URL" "$ROS2_TMP"; then
         mkdir -p "$PREBUILT_DIR/ros2_core"
         tar xzf "$ROS2_TMP" -C "$PREBUILT_DIR/ros2_core"
@@ -301,14 +306,12 @@ setup_ros2_core() {
 
     log_err "No ROS 2 tarball found for ${ARCH_NORMALIZED}"
     echo "       Searched:"
-    echo "         - $ROS2_CORE_BASE/humble/${ARCH_NORMALIZED}/ros2-humble-${ARCH_NORMALIZED}.tar.gz"
-    echo "         - $ROS2_CORE_BASE/jazzy/${ARCH_NORMALIZED}/ros2-jazzy-${ARCH_NORMALIZED}.tar.gz"
-    echo "         - $ROS2_URL"
-    echo "       Run: cd ~/buddy_ws/ros2_core && ./scripts/docker_build.sh humble --arch ${ARCH_NORMALIZED}"
-    echo "       Or set: BUDDY_ROS2_TAG=<tag> to use a different release"
+    echo "         - $ROS2_CORE_BASE/${ROS2_DISTRO}/${ARCH_NORMALIZED}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz"
+    echo "         - ${ROS2_RELEASE_URL}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz"
+    echo "       Run: cd ../ros2_core && ./scripts/build.sh --arch ${ARCH_NORMALIZED}"
+    echo "       Or set: BUDDY_ROS2_TAG=<tag> / BUDDY_ROS2_DISTRO=<distro>"
     return 1
 }
-
 setup_onnxruntime() {
     if ort_version_installed "$PREBUILT_DIR/onnxruntime" "$ONNXRT_VERSION"; then
         log_skip "ONNX Runtime v${ONNXRT_VERSION} (${ARCH_ORT})"

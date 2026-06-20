@@ -6,28 +6,31 @@ DOCKER_DIR="$ROOT_DIR/docker"
 
 usage() {
   cat <<'EOF'
-Usage: ./build.sh [-t|--arch x86|arm64] [-d|--device cpu|gpu|npu] [-c] [-p] [-v VERSION] [colcon args...]
+Usage: ./build.sh [-t|--arch x86|arm64] [-d|--device cpu|gpu|npu] [--ros-distro humble|jazzy] [-c] [-p] [-v VERSION] [colcon args...]
 
 Options:
   -t, --arch TARGET   x86 (default) or arm64
   -d, --device DEV    cpu (default), gpu (CUDA), or npu (RKNN)
+  --ros-distro DIST   humble (default) or jazzy — ROS 2 distro + base image
   -c          Clean build
   -p, --package       x86 only: package .deb after build (default: skip)
   -v VER      Deb version (default: 1.0.0)
 
 Outputs:
   x86 build:
-    output/x86_64/install/                         # colcon install
-    output/x86_64/deb/buddy-robot_<ver>_amd64_<device>.deb   (with -p)
+    output/<distro>/x86_64/install/                       # colcon install
+    output/<distro>/x86_64/deb/buddy-robot_<ver>_amd64_<device>.deb (with -p)
   arm64 build:
-    output/aarch64/deb/buddy-robot_<ver>_arm64_<device>.deb
-    output/aarch64/deb/buddy-models_<ver>_<device>.tar.gz
+    output/<distro>/aarch64/deb/buddy-robot_<ver>_arm64_<device>.deb
+    output/<distro>/aarch64/deb/buddy-models_<ver>_<device>.tar.gz
     (arm64 always exports runtime deb; models tar builds only when missing)
 
 Examples:
-  ./build.sh                        # x86 + cpu incremental
+  ./build.sh                        # x86 + cpu + humble incremental
+  ./build.sh --ros-distro jazzy     # x86 + cpu + jazzy
   ./build.sh -d gpu                 # x86 + GPU (CUDA ORT)
-  ./build.sh -t arm64 -d npu       # arm64 + NPU (RKNN)
+  ./build.sh -t arm64 -d npu       # arm64 + NPU (RKNN) + humble
+  ./build.sh -t arm64 --ros-distro jazzy  # arm64 + jazzy
   ./build.sh -t arm64               # arm64 incremental (~30s if only src changed)
   ./build.sh -t arm64 -c            # arm64 force rebuild (~3min, ccache still helps)
   ./build.sh -t arm64 -v 2.0.0     # arm64 custom version
@@ -64,19 +67,19 @@ die() {
 build_arm64() {
   local version="${VERSION:-1.0.0}"
   local parallel="${BUDDY_PARALLEL_WORKERS:-$(nproc)}"
-  local output_dir="$ROOT_DIR/output/aarch64/deb"
+  local output_dir="$ROOT_DIR/output/${ROS2_DISTRO}/aarch64/deb"
   local deb_file="$output_dir/buddy-robot_${version}_arm64_${DEVICE}.deb"
   local models_file="$output_dir/buddy-models_${version}_${DEVICE}.tar.gz"
 
-  echo "[INFO] Building buddy-robot_${version}_arm64_${DEVICE}.deb (cross-compile)"
+  echo "[INFO] Building buddy-robot_${version}_arm64_${DEVICE}.deb (cross-compile, ${ROS2_DISTRO})"
   echo "[INFO] Device target: $DEVICE"
 
   # Ensure prebuilt deps exist (auto-install if missing)
   if [[ ! -d "$ROOT_DIR/prebuilt/aarch64/ros2_core" ]] \
     || [[ ! -d "$ROOT_DIR/prebuilt/aarch64/onnxruntime" ]] \
     || [[ ! -d "$ROOT_DIR/prebuilt/aarch64/sherpa-onnx" ]]; then
-    echo "[INFO] Running setup_prebuilt.sh --arch arm64 ..."
-    "$ROOT_DIR/scripts/setup_prebuilt.sh" --arch arm64 prebuilt
+    echo "[INFO] Running setup_prebuilt.sh --arch arm64 (distro: ${ROS2_DISTRO}) ..."
+    BUDDY_ROS2_DISTRO="$ROS2_DISTRO" "$ROOT_DIR/scripts/setup_prebuilt.sh" --arch arm64
   fi
 
   # Device-specific prebuilt checks
@@ -130,7 +133,7 @@ build_arm64() {
     --build-arg VERSION="$version" \
     --build-arg PARALLEL_WORKERS="$parallel" \
     --build-arg DEVICE="$DEVICE" \
-    --target export-package \
+    --target "${ROS2_DISTRO}-export-package" \
     --output "type=local,dest=$output_dir/" \
     -f "$DOCKER_DIR/Dockerfile" \
     "$ROOT_DIR"
@@ -144,7 +147,7 @@ build_arm64() {
       --build-arg VERSION="$version" \
       --build-arg PARALLEL_WORKERS="$parallel" \
       --build-arg DEVICE="$DEVICE" \
-      --target export-models \
+      --target "${ROS2_DISTRO}-export-models" \
       --output "type=local,dest=$output_dir/" \
       -f "$DOCKER_DIR/Dockerfile" \
       "$ROOT_DIR"
@@ -159,7 +162,7 @@ build_arm64() {
   if [[ -f "$models_file" ]]; then
     echo ""
     echo "RK3588 deploy (recommended):"
-    echo "  ./scripts/deploy_run_arm64_npu.sh --build-services"
+    echo "  ./scripts/deploy_run_arm64_npu.sh --ros-distro ${ROS2_DISTRO} --build-services"
     echo "Manual (minimal):"
     echo "  scp $deb_file $models_file user@board:~/"
     echo "  ssh user@board 'cd ~ && rm -rf output/opt/buddy && dpkg -x buddy-robot_${version}_arm64_${DEVICE}.deb output && mkdir -p output/buddy-models-cache && tar xzf buddy-models_${version}_${DEVICE}.tar.gz -C output/buddy-models-cache && ln -sfn ~/output/buddy-models-cache ~/output/opt/buddy/models && ~/output/opt/buddy/run.sh'"
@@ -181,12 +184,12 @@ build_x86() {
   ln -sfn "$arch" "$ROOT_DIR/prebuilt/current"
 
   local ros2_setup="$ROOT_DIR/prebuilt/current/ros2_core/setup.bash"
-  local output_dir="$ROOT_DIR/output/$arch"
+  local output_dir="$ROOT_DIR/output/${ROS2_DISTRO}/$arch"
 
   # Ensure prebuilt deps exist (auto-install if missing)
   if [[ ! -f "$ros2_setup" ]]; then
-    echo "[INFO] Running setup_prebuilt.sh ..."
-    "$ROOT_DIR/scripts/setup_prebuilt.sh" prebuilt
+    echo "[INFO] Running setup_prebuilt.sh (distro: ${ROS2_DISTRO}) ..."
+    BUDDY_ROS2_DISTRO="$ROS2_DISTRO" "$ROOT_DIR/scripts/setup_prebuilt.sh"
   fi
   [[ -f "$ros2_setup" ]] \
     || die "Missing ROS 2 setup: $ros2_setup" \
@@ -282,6 +285,7 @@ build_x86() {
 # ============================================================
 TARGET="x86"
 DEVICE="cpu"
+ROS2_DISTRO="humble"
 CLEAN=false
 PACKAGE=false
 VERSION="1.0.0"
@@ -290,15 +294,22 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -t|--arch) TARGET="$2"; shift 2 ;;
     -d|--device) DEVICE="$2"; shift 2 ;;
+    --ros-distro) ROS2_DISTRO="$2"; shift 2 ;;
     -c) CLEAN=true; shift ;;
     -p|--package) PACKAGE=true; shift ;;
     -v) VERSION="$2"; shift 2 ;;
     -h|--help) usage ;;
     arm64|aarch64) TARGET="arm64"; shift ;;
     x86|x86_64) TARGET="x86"; shift ;;
+    humble|jazzy) ROS2_DISTRO="$1"; shift ;;
     *) break ;;
   esac
 done
+
+case "$ROS2_DISTRO" in
+  humble|jazzy) ;;
+  *) die "Unknown ROS 2 distro: $ROS2_DISTRO" "Use --ros-distro humble or jazzy" ;;
+esac
 
 case "$TARGET" in
   x86|x86_64)
@@ -306,8 +317,8 @@ case "$TARGET" in
     ;;
   arm64|aarch64)
     if [[ "$CLEAN" == true ]]; then
-      echo "[CLEAN] Removing output/aarch64/"
-      rm -rf "$ROOT_DIR/output/aarch64"
+      echo "[CLEAN] Removing output/${ROS2_DISTRO}/aarch64/"
+      rm -rf "$ROOT_DIR/output/${ROS2_DISTRO}/aarch64"
     fi
     build_arm64
     ;;

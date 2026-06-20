@@ -18,6 +18,12 @@ set(CMAKE_PREFIX_PATH
     /opt/prebuilt/libcurl
 )
 
+# Explicit hints for prebuilt libs that FindXXX modules may miss
+set(CURL_INCLUDE_DIR /opt/prebuilt/libcurl/include)
+set(CURL_LIBRARY /opt/prebuilt/libcurl/lib/libcurl.so)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I/opt/prebuilt/libcurl/include")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I/opt/prebuilt/libcurl/include")
+
 # Don't restrict find_path/find_library — multiarch puts arm64 libs
 # under /usr/lib/aarch64-linux-gnu which is not a separate sysroot
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
