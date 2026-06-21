@@ -8,6 +8,7 @@ docs/
 __pycache__/
 prebuilt/*
 !prebuilt/README.md
+rkllm_server/lib/
 *.rknn
 *.onnx
 asset/

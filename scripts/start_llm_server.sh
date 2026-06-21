@@ -176,8 +176,8 @@ resolve_rkllm_server_cmd() {
     fi
 
     local flask_server=""
-    local candidate1="$PROJECT_DIR/../rknn-llm/examples/rkllm_server_demo/rkllm_server/flask_server.py"
-    local candidate2="$PROJECT_DIR/rkllm_server/flask_server.py"
+    local candidate1="$PROJECT_DIR/rkllm_server/flask_server.py"
+    local candidate2="$PROJECT_DIR/docker/rkllm_server/flask_server.py"
     if [[ -f "$candidate1" ]]; then
         flask_server="$candidate1"
     elif [[ -f "$candidate2" ]]; then
@@ -185,7 +185,7 @@ resolve_rkllm_server_cmd() {
     else
         log_err "RKLLM server script not found"
         echo "  [!!] Set BUDDY_RKLLM_SERVER_CMD or place flask_server.py under:" >&2
-        echo "       $candidate1" >&2
+        echo "       $PROJECT_DIR/rkllm_server/" >&2
         return 1
     fi
 

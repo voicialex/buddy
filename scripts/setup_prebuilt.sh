@@ -2,12 +2,11 @@
 # Prebuilt 依赖 + Buddy 模型 一键安装脚本
 #
 # 用法:
-#   ./scripts/setup_prebuilt.sh                    # 安装全部 (host arch)
-#   ./scripts/setup_prebuilt.sh --arch arm64 prebuilt  # 下载 arm64 预编译包到 prebuilt/aarch64/
-#   ./scripts/setup_prebuilt.sh prebuilt           # 仅安装 prebuilt 库（ros2, onnxruntime, sherpa-onnx）
-#   ./scripts/setup_prebuilt.sh models             # 下载所有模型 (ASR, KWS, TTS, FunASR, MOSS-TTS, Vision)
+#   ./scripts/setup_prebuilt.sh          # 下载 x86_64 + aarch64 的全部 prebuilt + 模型
+#   ./scripts/setup_prebuilt.sh -t x86   # 只下载 x86_64
+#   ./scripts/setup_prebuilt.sh -t arm64 # 只下载 aarch64
 #
-# 跳过逻辑: 已解压的目录不会重复处理
+# 跳过逻辑: 已存在的文件不会重复下载
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,9 +17,8 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # ══════════════════════════════════════════════════════════
 
 ARCH="${BUDDY_ARCH:-$(uname -m)}"
+ARCH_SPECIFIED=false
 PROXY_URL="${BUDDY_PROXY_URL:-}"
-WITH_GPU_ORT=false
-
 print_help() {
     local clash_port=""
     clash_port="$(ss -lntp 2>/dev/null | awk '/clash|verge/ && /127.0.0.1:/ { split($4,a,":"); print a[length(a)]; exit }')"
@@ -32,10 +30,9 @@ Download prebuilt libraries and AI models for buddy.
 Skips anything already present — safe to re-run.
 
 Options:
-  --arch <x86_64|arm64>   Target arch for prebuilt libs (default: host)
-  --proxy <url>           HTTP proxy for this run
-  --with-gpu-ort          Include onnxruntime-gpu (x86_64 only)
-  -h, --help              Show this help
+  -t, --arch <x86|arm64>   Target arch (default: both x86_64 + aarch64)
+  --proxy <url>            HTTP proxy for this run
+  -h, --help               Show this help
 EOF
 
     if [[ -n "$clash_port" ]]; then
@@ -59,8 +56,9 @@ Override via env vars:
   BUDDY_MELO_TTS_HF_BASE        BUDDY_FACE_EMOTION_HF_BASE
 
 Examples:
-  ./scripts/setup_prebuilt.sh                              # Everything (host)
-  ./scripts/setup_prebuilt.sh --arch arm64                 # Cross-compile
+  ./scripts/setup_prebuilt.sh                              # Everything (both x86_64 + aarch64)
+  ./scripts/setup_prebuilt.sh -t arm64                     # Only aarch64
+  ./scripts/setup_prebuilt.sh -t x86                       # Only x86_64
   ./scripts/setup_prebuilt.sh --proxy http://127.0.0.1:7890
   BUDDY_ROS2_TAG=v2026.06.2 ./scripts/setup_prebuilt.sh   # Pin release version
   BUDDY_ROS2_DISTRO=jazzy ./scripts/setup_prebuilt.sh     # Use Jazzy instead of Humble
@@ -73,9 +71,8 @@ while [[ $# -gt 0 ]]; do
             print_help
             exit 0
             ;;
-        --arch) ARCH="$2"; shift 2 ;;
+        -t|--arch) ARCH="$2"; ARCH_SPECIFIED=true; shift 2 ;;
         --proxy) PROXY_URL="$2"; shift 2 ;;
-        --with-gpu-ort) WITH_GPU_ORT=true; shift ;;
         *)
             echo "[ERROR] Unknown option: $1"
             echo "Run '$0 --help' for usage."
@@ -85,12 +82,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$ARCH" in
-    x86_64|amd64) ARCH_ORT="x64"; ARCH_SHERPA="x64"; ARCH_NORMALIZED="x86_64" ;;
-    aarch64|arm64) ARCH_ORT="aarch64"; ARCH_SHERPA="aarch64"; ARCH_NORMALIZED="aarch64" ;;
-    *) echo "[ERROR] Unsupported arch: $ARCH"; exit 1 ;;
+    x86_64|amd64|x86) ARCH_NORMALIZED="x86_64" ;;
+    aarch64|arm64)    ARCH_NORMALIZED="aarch64" ;;
+    *) echo "[ERROR] Unsupported arch: $ARCH (use x86, x86_64, amd64, arm64, aarch64)"; exit 1 ;;
 esac
 
-PREBUILT_DIR="$PROJECT_DIR/prebuilt/${ARCH_NORMALIZED}"
+# Determine which archs to process
+if [[ "$ARCH_SPECIFIED" == true ]]; then
+    ARCHS=("$ARCH_NORMALIZED")
+else
+    ARCHS=("x86_64" "aarch64")
+fi
+
 MODELS_DIR="$PROJECT_DIR/models"
 
 cd "$PROJECT_DIR"
@@ -103,8 +106,6 @@ cd "$PROJECT_DIR"
 ROS2_DISTRO="${BUDDY_ROS2_DISTRO:-humble}"
 ROS2_CORE_BASE="$PROJECT_DIR/../ros2_core/output"
 
-# RKNN-LLM (external repo at workspace root)
-RKNN_LLM_BASE="$PROJECT_DIR/../rknn-llm"
 # HuggingFace model download base URLs (override via BUDDY_* env vars)
 MELO_TTS_HF_BASE="${BUDDY_MELO_TTS_HF_BASE:-https://huggingface.co/voicialex/melo-tts-rknn/resolve/main}"
 ZIPFORMER_RKNN_HF_BASE="${BUDDY_ZIPFORMER_RKNN_HF_BASE:-https://huggingface.co/voicialex/zipformer-asr-rknn/resolve/main/rknn}"
@@ -116,33 +117,6 @@ THIRDPARTY_RELEASE_TAG="${BUDDY_THIRDPARTY_TAG:-v2026.06.16}"
 THIRDPARTY_RELEASE_URL="https://github.com/voicialex/thirdparty/releases/download/${THIRDPARTY_RELEASE_TAG}"
 ROS2_RELEASE_TAG="${BUDDY_ROS2_TAG:-v2026.06.2}"
 ROS2_RELEASE_URL="https://github.com/voicialex/ros2_core/releases/download/${ROS2_RELEASE_TAG}"
-
-ROS2_TARBALL_PATH=""
-if [ -f "$ROS2_CORE_BASE/$ROS2_DISTRO/${ARCH_NORMALIZED}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz" ]; then
-    ROS2_TARBALL_PATH="$ROS2_CORE_BASE/$ROS2_DISTRO/${ARCH_NORMALIZED}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz"
-fi
-
-# ONNX Runtime
-ONNXRT_VERSION="1.24.4"
-ONNXRT_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRT_VERSION}/onnxruntime-linux-${ARCH_ORT}-${ONNXRT_VERSION}.tgz"
-
-# Sherpa-ONNX
-SHERPA_VERSION="1.13.1"
-if [[ "$ARCH_SHERPA" == "x64" ]]; then
-    SHERPA_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA_VERSION}/sherpa-onnx-v${SHERPA_VERSION}-linux-${ARCH_SHERPA}-shared.tar.bz2"
-    SHERPA_EXTRACT_DIR="sherpa-onnx-v${SHERPA_VERSION}-linux-${ARCH_SHERPA}-shared"
-else
-    SHERPA_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA_VERSION}/sherpa-onnx-v${SHERPA_VERSION}-linux-${ARCH_SHERPA}-shared-cpu.tar.bz2"
-    SHERPA_EXTRACT_DIR="sherpa-onnx-v${SHERPA_VERSION}-linux-${ARCH_SHERPA}-shared-cpu"
-fi
-
-# ONNX Runtime GPU (x86_64 only)
-ONNXRT_GPU_VERSION="1.24.4"
-if [[ "$ARCH_ORT" == "x64" ]]; then
-    ONNXRT_GPU_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRT_GPU_VERSION}/onnxruntime-linux-x64-gpu-${ONNXRT_GPU_VERSION}.tgz"
-else
-    ONNXRT_GPU_URL=""
-fi
 
 # SentencePiece
 SENTENCEPIECE_VERSION="0.2.0"
@@ -218,20 +192,11 @@ ensure_archive() {
     fi
 }
 
-ort_version_installed() {
-    local ort_dir="$1"
-    local version="$2"
-    [ -f "$ort_dir/lib/libonnxruntime.so.$version" ]
-}
-
 # ══════════════════════════════════════════════════════════
 # Third-party (git submodules + prebuilt check)
 # ══════════════════════════════════════════════════════════
-
-setup_submodules() {
-    # No submodules in buddy anymore (all moved to thirdparty repo)
-    return 0
-}
+# Third-party prebuilt check
+# ══════════════════════════════════════════════════════════
 
 check_thirdparty() {
     local missing=()
@@ -241,8 +206,23 @@ check_thirdparty() {
     if [ ! -f "$PREBUILT_DIR/opencv/lib/libopencv_core.so" ]; then
         missing+=("opencv")
     fi
+    if [ ! -f "$PREBUILT_DIR/onnxruntime/lib/libonnxruntime.so" ]; then
+        missing+=("onnxruntime")
+    fi
+    if [ ! -f "$PREBUILT_DIR/sherpa-onnx/lib/libsherpa-onnx-c-api.so" ]; then
+        missing+=("sherpa-onnx")
+    fi
+    if [ "$ARCH_NORMALIZED" == "x86_64" ] && [ ! -f "$PREBUILT_DIR/onnxruntime-gpu/lib/libonnxruntime.so" ]; then
+        missing+=("onnxruntime-gpu")
+    fi
+    if [ "$ARCH_NORMALIZED" == "aarch64" ] && [ ! -f "$PREBUILT_DIR/rknn/lib/librknnrt.so" ]; then
+        missing+=("rknn")
+    fi
+    if [ "$ARCH_NORMALIZED" == "aarch64" ] && [ ! -f "$PREBUILT_DIR/rkllm/lib/librkllmrt.so" ]; then
+        missing+=("rkllm")
+    fi
     if [ ${#missing[@]} -eq 0 ]; then
-        log_skip "Third-party (funasr + opencv) for ${ARCH_NORMALIZED}"
+        log_skip "Third-party (funasr + opencv + onnxruntime + onnxruntime-gpu + sherpa-onnx + rknn + rkllm) for ${ARCH_NORMALIZED}"
         return 0
     fi
 
@@ -252,7 +232,7 @@ check_thirdparty() {
     if [ -f "$THIRDPARTY_TARBALL" ]; then
         log_step "Extracting thirdparty from $(basename "$THIRDPARTY_TARBALL") ..."
         tar xzf "$THIRDPARTY_TARBALL" -C "$PREBUILT_DIR"
-        log_ok "Third-party (funasr + opencv)"
+        log_ok "Third-party (funasr + opencv + onnxruntime + onnxruntime-gpu + sherpa-onnx + rknn + rkllm)"
         return 0
     fi
 
@@ -263,7 +243,7 @@ check_thirdparty() {
     if download "$THIRDPARTY_URL" "$THIRDPARTY_TMP"; then
         tar xzf "$THIRDPARTY_TMP" -C "$PREBUILT_DIR"
         rm -f "$THIRDPARTY_TMP"
-        log_ok "Third-party (funasr + opencv)"
+        log_ok "Third-party (funasr + opencv + onnxruntime + onnxruntime-gpu + sherpa-onnx + rknn + rkllm)"
         return 0
     fi
     rm -f "$THIRDPARTY_TMP"
@@ -279,160 +259,66 @@ check_thirdparty() {
 # ══════════════════════════════════════════════════════════
 
 setup_ros2_core() {
-    if [ -f "$PREBUILT_DIR/ros2_core/setup.bash" ]; then
-        log_skip "ROS 2 Core"
+    # Check if the correct distro is already installed
+    local distro_marker="$PREBUILT_DIR/ros2_core/.buddy_ros2_distro"
+    if [ -f "$PREBUILT_DIR/ros2_core/setup.bash" ] && [ -f "$distro_marker" ] && [ "$(cat "$distro_marker")" = "$ROS2_DISTRO" ]; then
+        log_skip "ROS 2 Core (${ROS2_DISTRO})"
         return 0
     fi
+
+    # Wrong distro or no marker → replace
+    if [ -d "$PREBUILT_DIR/ros2_core" ]; then
+        log_step "Replacing ROS 2 Core (wrong distro or version)"
+        rm -rf "$PREBUILT_DIR/ros2_core"
+    fi
+
+    local tarball=""
+    local cleanup_tarball=false
+
     if [ -n "$ROS2_TARBALL_PATH" ]; then
-        log_step "Extracting ROS 2 Core from $(basename "$ROS2_TARBALL_PATH") ..."
-        mkdir -p "$PREBUILT_DIR/ros2_core"
-        tar xzf "$ROS2_TARBALL_PATH" -C "$PREBUILT_DIR/ros2_core"
-        log_ok "ROS 2 Core"
-        return 0
-    fi
-
-    # Fallback: download from GitHub Release
-    local ROS2_URL="${ROS2_RELEASE_URL}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz"
-    local ROS2_TMP="/tmp/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}-${ROS2_RELEASE_TAG}.tar.gz"
-    log_step "Downloading ROS 2 Core from GitHub Release (${ROS2_RELEASE_TAG}, ${ROS2_DISTRO}) ..."
-    if download "$ROS2_URL" "$ROS2_TMP"; then
-        mkdir -p "$PREBUILT_DIR/ros2_core"
-        tar xzf "$ROS2_TMP" -C "$PREBUILT_DIR/ros2_core"
-        rm -f "$ROS2_TMP"
-        log_ok "ROS 2 Core"
-        return 0
-    fi
-    rm -f "$ROS2_TMP"
-
-    log_err "No ROS 2 tarball found for ${ARCH_NORMALIZED}"
-    echo "       Searched:"
-    echo "         - $ROS2_CORE_BASE/${ROS2_DISTRO}/${ARCH_NORMALIZED}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz"
-    echo "         - ${ROS2_RELEASE_URL}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz"
-    echo "       Run: cd ../ros2_core && ./scripts/build.sh --arch ${ARCH_NORMALIZED}"
-    echo "       Or set: BUDDY_ROS2_TAG=<tag> / BUDDY_ROS2_DISTRO=<distro>"
-    return 1
-}
-setup_onnxruntime() {
-    if ort_version_installed "$PREBUILT_DIR/onnxruntime" "$ONNXRT_VERSION"; then
-        log_skip "ONNX Runtime v${ONNXRT_VERSION} (${ARCH_ORT})"
-        return 0
-    fi
-    if [ -d "$PREBUILT_DIR/onnxruntime" ]; then
-        log_step "Replacing incompatible ONNX Runtime with v${ONNXRT_VERSION} (${ARCH_ORT}) ..."
-        rm -rf "$PREBUILT_DIR/onnxruntime"
-    fi
-    local tmp="$PREBUILT_DIR/onnxruntime-linux-${ARCH_ORT}-${ONNXRT_VERSION}.tgz"
-    ensure_archive "$ONNXRT_URL" "$tmp" "tgz" "ONNX Runtime v${ONNXRT_VERSION} (${ARCH_ORT})" || return 1
-    tar xzf "$tmp" -C "$PREBUILT_DIR" || { log_err "Failed to extract ONNX Runtime (archive kept): $tmp"; return 1; }
-    mv "$PREBUILT_DIR/onnxruntime-linux-${ARCH_ORT}-${ONNXRT_VERSION}" "$PREBUILT_DIR/onnxruntime"
-    rm -f "$tmp"
-    log_ok "ONNX Runtime v${ONNXRT_VERSION}"
-}
-
-setup_sherpa_onnx() {
-    if [ -f "$PREBUILT_DIR/sherpa-onnx/lib/libsherpa-onnx-c-api.so" ]; then
-        log_skip "Sherpa-ONNX v${SHERPA_VERSION} (${ARCH_SHERPA})"
+        tarball="$ROS2_TARBALL_PATH"
     else
-        local tmp="$PREBUILT_DIR/sherpa-onnx-v${SHERPA_VERSION}.tar.bz2"
-        ensure_archive "$SHERPA_URL" "$tmp" "tbz2" "Sherpa-ONNX v${SHERPA_VERSION} (${ARCH_SHERPA})" || return 1
-        tar xjf "$tmp" -C "$PREBUILT_DIR" || { log_err "Failed to extract Sherpa-ONNX (archive kept): $tmp"; return 1; }
-        mv "$PREBUILT_DIR/${SHERPA_EXTRACT_DIR}" "$PREBUILT_DIR/sherpa-onnx"
-        rm -f "$tmp"
-        log_ok "Sherpa-ONNX v${SHERPA_VERSION}"
-    fi
-
-    # arm64 "-shared-cpu" package lacks headers; fetch from x86 package (headers are platform-independent)
-    if [[ ! -d "$PREBUILT_DIR/sherpa-onnx/include" ]]; then
-        local x86_include="$PROJECT_DIR/prebuilt/x86_64/sherpa-onnx/include"
-        if [[ ! -d "$x86_include" ]]; then
-            log_step "Downloading x86 sherpa-onnx for headers ..."
-            local x86_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA_VERSION}/sherpa-onnx-v${SHERPA_VERSION}-linux-x64-shared.tar.bz2"
-            local x86_tmp="/tmp/sherpa-onnx-x64-headers.tar.bz2"
-            ensure_archive "$x86_url" "$x86_tmp" "tbz2" "x86 sherpa-onnx headers" || return 1
-            local x86_dir="/tmp/sherpa-onnx-v${SHERPA_VERSION}-linux-x64-shared"
-            tar xjf "$x86_tmp" -C /tmp || { log_err "Failed to extract x86 sherpa-onnx headers (archive kept): $x86_tmp"; return 1; }
-            mkdir -p "$PROJECT_DIR/prebuilt/x86_64/sherpa-onnx"
-            cp -r "$x86_dir/include" "$x86_include"
-            rm -rf "$x86_tmp" "$x86_dir"
-        fi
-        cp -r "$x86_include" "$PREBUILT_DIR/sherpa-onnx/include"
-        log_step "Copied headers from x86 package (platform-independent)"
-    fi
-}
-
-setup_onnxruntime_gpu() {
-    local tmp="$PREBUILT_DIR/onnxruntime-gpu-${ONNXRT_GPU_VERSION}.tgz"
-    local resume_partial=false
-    if [ -s "$tmp" ] && ! ort_version_installed "$PREBUILT_DIR/onnxruntime-gpu" "$ONNXRT_GPU_VERSION"; then
-        resume_partial=true
-    fi
-
-    if [ "$WITH_GPU_ORT" != "true" ]; then
-        if [ "$resume_partial" = true ]; then
-            :
+        # Fallback: download from GitHub Release
+        local ROS2_URL="${ROS2_RELEASE_URL}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz"
+        local ROS2_TMP="/tmp/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}-${ROS2_RELEASE_TAG}.tar.gz"
+        log_step "Downloading ROS 2 Core from GitHub Release (${ROS2_RELEASE_TAG}, ${ROS2_DISTRO}) ..."
+        if download "$ROS2_URL" "$ROS2_TMP"; then
+            tarball="$ROS2_TMP"
+            cleanup_tarball=true
         else
-            return 0
+            rm -f "$ROS2_TMP"
+            log_err "No ROS 2 tarball found for ${ARCH_NORMALIZED}"
+            echo "       Searched:"
+            echo "         - $ROS2_CORE_BASE/${ROS2_DISTRO}/${ARCH_NORMALIZED}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz"
+            echo "         - ${ROS2_RELEASE_URL}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz"
+            echo "       Run: cd ../ros2_core && ./scripts/build.sh --arch ${ARCH_NORMALIZED}"
+            echo "       Or set: BUDDY_ROS2_TAG=<tag> / BUDDY_ROS2_DISTRO=<distro>"
+            return 1
         fi
     fi
 
-    if ort_version_installed "$PREBUILT_DIR/onnxruntime-gpu" "$ONNXRT_GPU_VERSION"; then
-        log_skip "ONNX Runtime GPU v${ONNXRT_GPU_VERSION}"
-        return 0
+    log_step "Extracting ROS 2 Core (${ROS2_DISTRO}) from $(basename "$tarball") ..."
+    mkdir -p "$PREBUILT_DIR/ros2_core"
+    tar xzf "$tarball" -C "$PREBUILT_DIR/ros2_core"
+    if [ "$cleanup_tarball" = true ]; then
+        rm -f "$tarball"
     fi
-    if [ -d "$PREBUILT_DIR/onnxruntime-gpu" ]; then
-        log_step "Replacing incompatible ONNX Runtime GPU with v${ONNXRT_GPU_VERSION} ..."
-        rm -rf "$PREBUILT_DIR/onnxruntime-gpu"
-    fi
-
-    if [ -z "$ONNXRT_GPU_URL" ]; then
-        return 0
-    fi
-    ensure_archive "$ONNXRT_GPU_URL" "$tmp" "tgz" "ONNX Runtime GPU v${ONNXRT_GPU_VERSION}" || return 1
-    tar xzf "$tmp" -C "$PREBUILT_DIR" || { log_err "Failed to extract ONNX Runtime GPU (archive kept): $tmp"; return 1; }
-    mv "$PREBUILT_DIR/onnxruntime-linux-x64-gpu-${ONNXRT_GPU_VERSION}" "$PREBUILT_DIR/onnxruntime-gpu"
-    rm -f "$tmp"
-    log_ok "ONNX Runtime GPU v${ONNXRT_GPU_VERSION}"
+    echo "$ROS2_DISTRO" > "$distro_marker"
+    log_ok "ROS 2 Core (${ROS2_DISTRO})"
 }
 
-setup_rknn() {
-    # RKNN is provided by thirdparty tarball (extracted via check_thirdparty)
-    if [ "$ARCH_NORMALIZED" != "aarch64" ]; then
+ensure_rkllm_server_lib() {
+    # flask_server.py loads ./lib/librkllmrt.so relative to its directory
+    local lib_dst="$PROJECT_DIR/rkllm_server/lib/librkllmrt.so"
+    local lib_src="$PREBUILT_DIR/rkllm/lib/librkllmrt.so"
+    if [ -L "$lib_dst" ] || [ -f "$lib_dst" ]; then
         return 0
     fi
-    if [ -f "$PREBUILT_DIR/rknn/lib/librknnrt.so" ]; then
-        log_skip "RKNN SDK (rk3588)"
-        return 0
+    if [ ! -f "$lib_src" ]; then
+        return 0  # check_thirdparty already reported the error
     fi
-    # RKNN is now provided by thirdparty tarball (extracted via check_thirdparty)
-    log_err "RKNN SDK not found. Ensure thirdparty tarball includes rknn."
-    echo "       Run: cd ../thirdparty && ./build.sh -t aarch64"
-    return 1
-}
-
-setup_rkllm() {
-    # Only needed for aarch64 builds (RK3588 NPU LLM)
-    if [ "$ARCH_NORMALIZED" != "aarch64" ]; then
-        return 0
-    fi
-    if [ -f "$PREBUILT_DIR/rkllm/lib/librkllmrt.so" ]; then
-        log_skip "RKLLM Runtime (rk3588)"
-        return 0
-    fi
-    # RKLLM runtime is in external rknn-llm repo at workspace root
-    local rkllm_src="$RKNN_LLM_BASE/rkllm-runtime/Linux/librkllm_api/aarch64/librkllmrt.so"
-    if [ ! -f "$rkllm_src" ]; then
-        log_err "RKLLM Runtime not found: $rkllm_src"
-        echo "       Clone rknn-llm to $RKNN_LLM_BASE"
-        return 1
-    fi
-    log_step "Installing RKLLM Runtime (rk3588) ..."
-    mkdir -p "$PREBUILT_DIR/rkllm/lib"
-    cp "$rkllm_src" "$PREBUILT_DIR/rkllm/lib/"
-    # Also copy to flask_server's expected location
-    local flask_lib_dir="$RKNN_LLM_BASE/examples/rkllm_server_demo/rkllm_server/lib"
-    mkdir -p "$flask_lib_dir"
-    cp "$rkllm_src" "$flask_lib_dir/"
-    log_ok "RKLLM Runtime"
+    mkdir -p "$(dirname "$lib_dst")"
+    ln -sf "$lib_src" "$lib_dst"
 }
 
 setup_sentencepiece() {
@@ -771,19 +657,12 @@ setup_model_emotion() {
 do_prebuilt() {
     mkdir -p "$PREBUILT_DIR"
 
-    setup_submodules
     log_stage "Prebuilt Libraries (${ARCH_NORMALIZED})"
     check_thirdparty
     setup_ros2_core
-    setup_onnxruntime
-    setup_sherpa_onnx
-    setup_onnxruntime_gpu
     setup_sentencepiece
-    setup_rknn
-    setup_rkllm
+    ensure_rkllm_server_lib
 
-    ln -sfn "${ARCH_NORMALIZED}" "$PROJECT_DIR/prebuilt/current"
-    log_ok "Symlink: prebuilt/current -> ${ARCH_NORMALIZED}"
 }
 
 check_model_chattts() {
@@ -833,12 +712,32 @@ do_models() {
     check_model_ollama
 }
 
-# ══════════════════════════════════════════════════════════
-# Main
-# ══════════════════════════════════════════════════════════
+# ── Per-arch setup ──────────────────────────────────────────
 
-do_prebuilt
-do_models
+HOST_ARCH="$(uname -m)"
+case "$HOST_ARCH" in
+    x86_64|amd64) HOST_ARCH_NORMALIZED="x86_64" ;;
+    aarch64|arm64) HOST_ARCH_NORMALIZED="aarch64" ;;
+    *) HOST_ARCH_NORMALIZED="x86_64" ;;  # fallback
+esac
+
+for CURRENT_ARCH in "${ARCHS[@]}"; do
+    ARCH_NORMALIZED="$CURRENT_ARCH"
+    PREBUILT_DIR="$PROJECT_DIR/prebuilt/${ARCH_NORMALIZED}"
+
+    # Recompute ROS 2 tarball path per arch
+    ROS2_TARBALL_PATH=""
+    if [ -f "$ROS2_CORE_BASE/$ROS2_DISTRO/${ARCH_NORMALIZED}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz" ]; then
+        ROS2_TARBALL_PATH="$ROS2_CORE_BASE/$ROS2_DISTRO/${ARCH_NORMALIZED}/ros2-${ROS2_DISTRO}-${ARCH_NORMALIZED}.tar.gz"
+    fi
+
+    do_prebuilt
+    do_models
+done
+
+# Symlink prebuilt/current → host arch (last in loop may not be host)
+ln -sfn "${HOST_ARCH_NORMALIZED}" "$PROJECT_DIR/prebuilt/current"
+log_ok "Symlink: prebuilt/current -> ${HOST_ARCH_NORMALIZED}"
 
 echo ""
 echo "=== Done ==="
