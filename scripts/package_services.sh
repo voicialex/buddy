@@ -5,7 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 VERSION="1.0.0"
 ARCH_RAW="$(uname -m)"
-SERVICES="all"
+SERVICES="llm"
+PYTHON_VER="3.12"
 
 usage() {
   cat <<'EOF'
@@ -15,6 +16,7 @@ Options:
   --arch <x86_64|aarch64|arm64>   Target arch (default: host)
   --version <ver>                 Version in output file names (default: 1.0.0)
   --services <list>               all | llm | funasr | chattts | llm,funasr,...
+  --python-ver <3.10|3.12>        Target Python version (default: 3.12, use 3.10 for Humble)
   -h, --help                      Show help
 
 Output:
@@ -30,6 +32,7 @@ while [[ $# -gt 0 ]]; do
     --arch) ARCH_RAW="$2"; shift 2 ;;
     --version|-v) VERSION="$2"; shift 2 ;;
     --services) SERVICES="$2"; shift 2 ;;
+    --python-ver) PYTHON_VER="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "[ERROR] Unknown arg: $1" >&2; usage; exit 1 ;;
   esac
@@ -61,10 +64,85 @@ build_llm_pkg() {
   cp "$ROOT_DIR/scripts/start_llm_server.sh" "$tmp/opt/buddy/scripts/"
   cp "$ROOT_DIR/scripts/common.sh" "$tmp/opt/buddy/scripts/"
   cp -r "$ROOT_DIR/services/llm/"* "$tmp/opt/buddy/services/llm/"
-  rm -rf "$tmp/opt/buddy/services/llm/.venv" \
-         "$tmp/opt/buddy/services/llm/tests" \
+  rm -rf "$tmp/opt/buddy/services/llm/tests" \
          "$tmp/opt/buddy/services/llm/__pycache__" \
          "$tmp/opt/buddy/services/llm/backends/__pycache__"
+
+  # Build pre-installed Python venv with offline wheels
+  echo "[INFO] Building pre-installed Python venv ($ARCH)..."
+  local wheels_dir="$tmp/opt/buddy/services/llm/wheels"
+  local venv_dir="$tmp/opt/buddy/services/llm/.venv"
+  local req_file="$tmp/opt/buddy/services/llm/requirements.txt"
+  local site_packages="$venv_dir/lib/python${PYTHON_VER}/site-packages"
+  mkdir -p "$wheels_dir" "$venv_dir/bin" "$site_packages"
+
+  # Resolve pip platform flags per architecture
+  local plat_flags=(--platform any)
+  case "$ARCH" in
+    x86_64)
+      plat_flags+=(--platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 --platform linux_x86_64)
+      ;;
+    aarch64)
+      plat_flags+=(--platform manylinux_2_17_aarch64 --platform manylinux2014_aarch64)
+      ;;
+  esac
+
+  # Download all dependencies as wheels for target arch (incl. transitive deps)
+  pip download \
+    "${plat_flags[@]}" \
+    --python-version "$PYTHON_VER" \
+    --only-binary=:all: \
+    -r "$req_file" \
+    -d "$wheels_dir/" || echo "[WARN] Some wheels download failed"
+
+  # Create minimal venv
+  printf '[virtualenv]\nhome = /usr/bin\ninclude-system-site-packages = true\nversion = %s\n' "$PYTHON_VER" \
+    > "$venv_dir/pyvenv.cfg"
+  ln -sf /usr/bin/python3 "$venv_dir/bin/python3"
+  ln -sf python3 "$venv_dir/bin/python"
+
+  # Install wheels directly: --platform + direct .whl paths bypass host-platform check
+  pip install --quiet --no-deps \
+    "${plat_flags[@]}" \
+    --python-version "$PYTHON_VER" \
+    --only-binary=:all: \
+    --target "$site_packages" \
+    "$wheels_dir"/*.whl \
+    || echo "[WARN] Some packages install failed"
+
+  # Create activate script
+  cat > "$venv_dir/bin/activate" <<'ACTIVATE_EOF'
+deactivate () {
+    if [ -n "${_OLD_VIRTUAL_PATH:-}" ] ; then
+        PATH="$_OLD_VIRTUAL_PATH"; export PATH; unset _OLD_VIRTUAL_PATH
+    fi
+    if [ -n "${BASH:-}" -o -n "${ZSH_VERSION:-}" ] ; then hash -r 2>/dev/null; fi
+    if [ -n "${_OLD_VIRTUAL_PS1:-}" ] ; then
+        PS1="$_OLD_VIRTUAL_PS1"; export PS1; unset _OLD_VIRTUAL_PS1
+    fi
+    unset VIRTUAL_ENV
+    unset VIRTUAL_ENV_PROMPT
+    if [ ! "$1" = "nondestructive" ] ; then unset -f deactivate; fi
+}
+deactivate nondestructive
+VIRTUAL_ENV="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+export VIRTUAL_ENV
+_OLD_VIRTUAL_PATH="$PATH"
+PATH="$VIRTUAL_ENV/bin:$PATH"
+export PATH
+if [ -z "${VIRTUAL_ENV_DISABLE_PROMPT:-}" ] ; then
+    _OLD_VIRTUAL_PS1="${PS1:-}"
+    PS1="(.venv) ${PS1:-}"
+    export PS1
+    VIRTUAL_ENV_PROMPT="(.venv) "
+    export VIRTUAL_ENV_PROMPT
+fi
+if [ -n "${BASH:-}" -o -n "${ZSH_VERSION:-}" ] ; then hash -r 2>/dev/null; fi
+ACTIVATE_EOF
+
+  # Write requirements hash and prebuilt marker
+  sha256sum "$req_file" | awk '{print $1}' > "$venv_dir/.requirements.sha256"
+  touch "$venv_dir/.prebuilt"
 
   if [[ -d "$ROOT_DIR/docker/rkllm_server" ]]; then
     mkdir -p "$tmp/opt/buddy/rkllm_server"

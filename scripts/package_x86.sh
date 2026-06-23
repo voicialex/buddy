@@ -6,11 +6,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="1.0.0"
 DEVICE="cpu"
+PYTHON_VER="3.12"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -v|--version) VERSION="$2"; shift 2 ;;
     -d|--device)  DEVICE="$2"; shift 2 ;;
+    --python-ver) PYTHON_VER="$2"; shift 2 ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -90,7 +92,7 @@ if [[ -d "$ROOT_DIR/services/llm" ]]; then
   PIP_INDEX="https://mirrors.aliyun.com/pypi/simple/"
   WHEELS_DIR="$DEB_ROOT/opt/buddy/services/llm/wheels"
   VENV_DIR="$DEB_ROOT/opt/buddy/services/llm/.venv"
-  SITE_PACKAGES="$VENV_DIR/lib/python3.12/site-packages"
+  SITE_PACKAGES="$VENV_DIR/lib/python${PYTHON_VER}/site-packages"
 
   mkdir -p "$WHEELS_DIR" "$VENV_DIR/bin" "$SITE_PACKAGES"
 
@@ -98,32 +100,30 @@ if [[ -d "$ROOT_DIR/services/llm" ]]; then
   pip download -i "$PIP_INDEX" --trusted-host mirrors.aliyun.com \
     --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 \
     --platform any --platform linux_x86_64 \
-    --python-version 3.12 --only-binary=:all: \
+    --python-version "$PYTHON_VER" --only-binary=:all: \
     -r "$DEB_ROOT/opt/buddy/services/llm/requirements.txt" \
     -d "$WHEELS_DIR/" \
   && pip download -i "$PIP_INDEX" --trusted-host mirrors.aliyun.com \
-    --platform any --python-version 3.12 --only-binary=:all: \
+    --platform any --python-version "$PYTHON_VER" --only-binary=:all: \
     -r "$DEB_ROOT/opt/buddy/services/llm/requirements.txt" \
     -d "$WHEELS_DIR/" \
   || echo "[WARN] Some wheels download failed"
 
   # Create minimal venv structure
-  printf '[virtualenv]\nhome = /usr/bin\ninclude-system-site-packages = true\nversion = 3.12\n' \
+  printf '[virtualenv]\nhome = /usr/bin\ninclude-system-site-packages = true\nversion = %s\n' "$PYTHON_VER" \
     > "$VENV_DIR/pyvenv.cfg"
   ln -sf /usr/bin/python3 "$VENV_DIR/bin/python3"
   ln -sf python3 "$VENV_DIR/bin/python"
 
-  # Install packages from wheels (skip system packages)
-  grep -v '^\s*#' "$DEB_ROOT/opt/buddy/services/llm/requirements.txt" | grep -v '^\s*$' | \
-    while IFS= read -r line; do \
-      pkg="$(echo "$line" | sed 's/[>=<\[[:space:]].*//' | tr '[:upper:]' '[:lower:]' | tr '-' '_')"; \
-      if python3 -c "import $pkg" 2>/dev/null; then continue; fi; \
-      echo "$line"; \
-    done > /tmp/venv-requirements.txt
-
-  pip install --no-index --find-links="$WHEELS_DIR" \
+  # Install wheels directly: --platform + direct .whl paths bypass host-platform check
+  pip install --quiet --no-deps \
+    --platform manylinux2014_x86_64 \
+    --platform manylinux_2_17_x86_64 \
+    --platform any \
+    --python-version "$PYTHON_VER" \
+    --only-binary=:all: \
     --target "$SITE_PACKAGES" \
-    -r /tmp/venv-requirements.txt \
+    "$WHEELS_DIR"/*.whl \
   || echo "[WARN] Some packages install failed"
 
   # Create activate script
@@ -141,7 +141,7 @@ deactivate () {
     if [ ! "$1" = "nondestructive" ] ; then unset -f deactivate; fi
 }
 deactivate nondestructive
-VIRTUAL_ENV="__VENV_DIR__"
+VIRTUAL_ENV="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 export VIRTUAL_ENV
 _OLD_VIRTUAL_PATH="$PATH"
 PATH="$VIRTUAL_ENV/bin:$PATH"
@@ -155,11 +155,11 @@ if [ -z "${VIRTUAL_ENV_DISABLE_PROMPT:-}" ] ; then
 fi
 if [ -n "${BASH:-}" -o -n "${ZSH_VERSION:-}" ] ; then hash -r 2>/dev/null; fi
 ACTIVATE_EOF
-  sed -i "s|__VENV_DIR__|$VENV_DIR|g" "$VENV_DIR/bin/activate"
 
   # Write requirements hash
   sha256sum "$DEB_ROOT/opt/buddy/services/llm/requirements.txt" | awk '{print $1}' \
     > "$VENV_DIR/.requirements.sha256"
+  touch "$VENV_DIR/.prebuilt"
 fi
 if [[ -d "$ROOT_DIR/docker/rkllm_server" ]]; then
   mkdir -p "$DEB_ROOT/opt/buddy/rkllm_server"

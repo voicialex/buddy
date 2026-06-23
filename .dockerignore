@@ -3,6 +3,9 @@ output/
 prebuilt/
 !prebuilt/aarch64/
 venv-tts/
+services/llm/.venv/
+services/llm/wheels/
+__pycache__/
 graphify-out/
 refs/
 third_party/*

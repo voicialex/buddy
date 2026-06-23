@@ -152,29 +152,29 @@ ensure_venv() {
         req_hash="$(cksum "$requirements" | awk '{print $1":"$2}')"
     fi
 
-    local needs_install=true
-    if [ "${BUDDY_FORCE_PIP_SYNC:-0}" != "1" ] && [ -f "$state_file" ] && [ "$(cat "$state_file" 2>/dev/null || true)" = "$req_hash" ]; then
-        # Hash matches — verify at least one top-level package is actually importable
-        local first_pkg
-        first_pkg="$(grep -v '^\s*#' "$requirements" | grep -v '^\s*$' | head -1 | sed 's/[>=<\[].*//' | tr '[:upper:]' '[:lower:]' | tr '-' '_')"
-        if [ -n "$first_pkg" ] && python3 -c "import $first_pkg" 2>/dev/null; then
-            needs_install=false
-        fi
+    local prebuilt_marker="$venv_dir/.prebuilt"
+
+    # Prebuilt at build time: trust the venv, skip install
+    if [ -f "$prebuilt_marker" ] && [ -f "$state_file" ] && [ "$(cat "$state_file")" = "$req_hash" ]; then
+        log_skip "Python dependencies (prebuilt)"
+        return 0
     fi
 
-    if [ "$needs_install" = true ]; then
-        log_step "Installing Python dependencies..."
-        # Check for pre-downloaded wheels (offline install from deb package)
-        local wheels_dir
-        wheels_dir="$(dirname "$requirements")/wheels"
-        if [ -d "$wheels_dir" ] && [ -n "$(ls -A "$wheels_dir"/*.whl 2>/dev/null)" ]; then
-            log_step "Installing from local wheels ($wheels_dir)..."
-            python3 -m pip install --no-index --find-links="$wheels_dir" -r "$requirements" --progress-bar on || true
-        else
-            python3 -m pip install --progress-bar on -r "$requirements" || true
-        fi
-        echo "$req_hash" > "$state_file"
+    log_step "Installing Python dependencies..."
+    local wheels_dir
+    wheels_dir="$(dirname "$requirements")/wheels"
+    if [ -d "$wheels_dir" ] && [ -n "$(ls -A "$wheels_dir"/*.whl 2>/dev/null)" ]; then
+        log_step "Installing from local wheels ($wheels_dir)..."
+        python3 -m pip install --no-index --find-links="$wheels_dir" -r "$requirements" --progress-bar on || {
+            log_err "Failed to install from local wheels"
+            return 1
+        }
     else
-        log_skip "Python dependencies"
+        log_step "Installing from PyPI..."
+        python3 -m pip install --progress-bar on -r "$requirements" || {
+            log_err "Failed to install Python dependencies (no network, no wheels)"
+            return 1
+        }
     fi
+    echo "$req_hash" > "$state_file"
 }

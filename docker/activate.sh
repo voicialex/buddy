@@ -12,7 +12,7 @@ deactivate () {
     if [ ! "$1" = "nondestructive" ] ; then unset -f deactivate; fi
 }
 deactivate nondestructive
-VIRTUAL_ENV="__VENV_DIR__"
+VIRTUAL_ENV="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 export VIRTUAL_ENV
 _OLD_VIRTUAL_PATH="$PATH"
 PATH="$VIRTUAL_ENV/bin:$PATH"

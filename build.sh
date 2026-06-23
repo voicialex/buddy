@@ -36,15 +36,13 @@ Examples:
   ./build.sh -t arm64 -v 2.0.0     # arm64 custom version
   ./build.sh --packages-select X    # x86 single package
 
-Optional service packages (separate from runtime):
-  ./scripts/package_services.sh --arch arm64
-  # outputs:
-  #   output/aarch64/services/buddy-service-llm_<ver>_aarch64.tar.gz
-  #   output/aarch64/services/buddy-service-funasr_<ver>_aarch64.tar.gz
-  #   output/aarch64/services/buddy-service-chattts_<ver>_aarch64.tar.gz
+Optional service packages (LLM, ASR, TTS) — built automatically with arm64:
+  output/aarch64/services/buddy-service-llm_<ver>_aarch64.tar.gz
+  output/aarch64/services/buddy-service-funasr_<ver>_aarch64.tar.gz
+  output/aarch64/services/buddy-service-chattts_<ver>_aarch64.tar.gz
 
 One-command board deploy/run (incremental runtime/models/services):
-  ./scripts/deploy_run_arm64_npu.sh --build-services
+  ./scripts/deploy_run_arm64_npu.sh --ros-distro ${ROS2_DISTRO:-humble}
 
 Env: BUDDY_PARALLEL_WORKERS=N (default: all cores)
 
@@ -159,10 +157,21 @@ build_arm64() {
   [[ -f "$deb_file" ]] && echo "[OK] Package: $deb_file ($(du -sh "$deb_file" | cut -f1))"
   [[ -f "$models_file" ]] && echo "[OK] Models:  $models_file ($(du -sh "$models_file" | cut -f1))"
 
+  # Build optional service packages (LLM, ASR, TTS)
+  echo ""
+  echo "[INFO] Building service packages..."
+  local py_ver="3.10"
+  [[ "$ROS2_DISTRO" == "jazzy" ]] && py_ver="3.12"
+  "$ROOT_DIR/scripts/package_services.sh" --arch arm64 --version "$version" --python-ver "$py_ver"
+  local svc_dir="$ROOT_DIR/output/aarch64/services"
+  for svc in "$svc_dir"/*.tar.gz; do
+    [[ -f "$svc" ]] && echo "[OK] $(basename "$svc") ($(du -sh "$svc" | cut -f1))"
+  done
+
   if [[ -f "$models_file" ]]; then
     echo ""
     echo "RK3588 deploy (recommended):"
-    echo "  ./scripts/deploy_run_arm64_npu.sh --ros-distro ${ROS2_DISTRO} --build-services"
+    echo "  ./scripts/deploy_run_arm64_npu.sh --ros-distro ${ROS2_DISTRO}"
     echo "Manual (minimal):"
     echo "  scp $deb_file $models_file user@board:~/"
     echo "  ssh user@board 'cd ~ && rm -rf output/opt/buddy && dpkg -x buddy-robot_${version}_arm64_${DEVICE}.deb output && mkdir -p output/buddy-models-cache && tar xzf buddy-models_${version}_${DEVICE}.tar.gz -C output/buddy-models-cache && ln -sfn ~/output/buddy-models-cache ~/output/opt/buddy/models && ~/output/opt/buddy/run.sh'"
@@ -276,7 +285,16 @@ build_x86() {
 
   # Package .deb only when explicitly requested
   if [[ "$PACKAGE" == true ]]; then
-    "$ROOT_DIR/scripts/package_x86.sh" -v "${VERSION:-1.0.0}" -d "$DEVICE"
+    local py_ver="3.10"
+    [[ "$ROS2_DISTRO" == "jazzy" ]] && py_ver="3.12"
+    "$ROOT_DIR/scripts/package_x86.sh" -v "${VERSION:-1.0.0}" -d "$DEVICE" --python-ver "$py_ver"
+    echo ""
+    echo "[INFO] Building service packages..."
+    "$ROOT_DIR/scripts/package_services.sh" --arch x86_64 --version "${VERSION:-1.0.0}" --python-ver "$py_ver"
+    local svc_dir="$ROOT_DIR/output/x86_64/services"
+    for svc in "$svc_dir"/*.tar.gz; do
+      [[ -f "$svc" ]] && echo "[OK] $(basename "$svc") ($(du -sh "$svc" | cut -f1))"
+    done
   fi
 }
 
