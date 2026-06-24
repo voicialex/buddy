@@ -127,6 +127,8 @@ async def startup():
     cloud_cfg = config.get("cloud", {})
 
     local_backend = create_backend(backend_cfg) if backend_cfg else None
+    if local_backend:
+        asyncio.create_task(local_backend.warmup())
     cloud_backend = None
     try:
         cloud_backend = create_backend(cloud_cfg) if cloud_cfg else None

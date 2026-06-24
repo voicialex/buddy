@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import subprocess
 import time
 from typing import AsyncIterator
@@ -7,6 +8,8 @@ from typing import AsyncIterator
 import httpx
 
 from .base import LLMBackend
+
+logger = logging.getLogger("rk_llm")
 
 
 class RkLlmBackend(LLMBackend):
@@ -60,13 +63,17 @@ class RkLlmBackend(LLMBackend):
         return f"{self.base_url}{self.endpoint}"
 
     async def _run_shell(self, cmd: str) -> None:
-        await asyncio.to_thread(
+        proc = await asyncio.to_thread(
             subprocess.run,
             ["bash", "-lc", cmd],
             check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
         )
+        if proc.returncode != 0:
+            logger.error("Shell command failed (rc=%d): %s", proc.returncode, cmd)
+            if proc.stderr:
+                logger.error("stderr: %s", proc.stderr.strip())
 
     async def _is_service_ready(self) -> bool:
         try:
@@ -98,10 +105,12 @@ class RkLlmBackend(LLMBackend):
         async with self._startup_lock:
             if await self._is_service_ready():
                 return
+            logger.info("Autostarting RKLLM server: %s", self.autostart_cmd)
             await self._run_shell(self.autostart_cmd)
             deadline = time.monotonic() + self.autostart_timeout_sec
             while time.monotonic() < deadline:
                 if await self._is_service_ready():
+                    logger.info("RKLLM server ready")
                     return
                 await asyncio.sleep(0.8)
             raise RuntimeError("RKLLM service autostart timeout")
@@ -256,3 +265,12 @@ class RkLlmBackend(LLMBackend):
 
     async def health_check(self) -> bool:
         return await self._is_service_ready()
+
+    async def warmup(self) -> None:
+        """Pre-start RKLLM server in the background so the first request is fast."""
+        if not self.autostart or not self.autostart_cmd:
+            return
+        if await self._is_service_ready():
+            return
+        logger.info("Warming up RKLLM server in background...")
+        asyncio.create_task(self._ensure_ready())

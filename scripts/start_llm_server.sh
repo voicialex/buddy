@@ -322,16 +322,10 @@ stop_ollama() {
 # ════════════════════════════════════════════════════════════════
 
 is_rkllm_ready() {
-    local rkllm_url
-    rkllm_url="$(resolve_rkllm_url)"
-    local code
-    code="$(
-        curl -sS -o /dev/null -w "%{http_code}" --max-time 8 \
-            -H "Content-Type: application/json" \
-            -d '{"model":"buddy","messages":[{"role":"user","content":"ping"}],"stream":false}' \
-            "$rkllm_url" 2>/dev/null || true
-    )"
-    [[ "$code" == "200" || "$code" == "503" ]]
+    local base_url
+    base_url="$(resolve_rkllm_url)"
+    base_url="${base_url%/rkllm_chat}"
+    check_http "${base_url}/health"
 }
 
 wait_for_rkllm() {
@@ -386,7 +380,13 @@ ensure_local_backend_runtime() {
             ;;
         rk_llm)
             if [[ "${BUDDY_RKLLM_ON_DEMAND:-1}" == "1" ]]; then
-                log_skip "RKLLM server (on-demand)"
+                if resolve_rkllm_server_cmd >/dev/null 2>&1; then
+                    log_skip "RKLLM server (on-demand)"
+                else
+                    log_err "RKLLM model not found or server config invalid"
+                    resolve_rkllm_server_cmd >/dev/null
+                    return 1
+                fi
             else
                 start_rkllm
             fi

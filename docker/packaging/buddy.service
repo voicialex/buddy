@@ -8,8 +8,6 @@ EnvironmentFile=-/opt/buddy/etc/buddy.env
 ExecStart=/opt/buddy/run.sh
 Restart=on-failure
 RestartSec=3
-User=buddy
-Group=audio
 WorkingDirectory=/opt/buddy
 
 [Install]

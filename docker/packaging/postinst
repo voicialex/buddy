@@ -3,6 +3,8 @@ set -e
 if ! id -u buddy >/dev/null 2>&1; then
     useradd --system --no-create-home --shell /usr/sbin/nologin \
         --groups audio buddy
+    mkdir -p /home/buddy/.ros/log
+    chown -R buddy:buddy /home/buddy
 fi
 systemctl daemon-reload
 systemctl enable buddy.service

@@ -27,3 +27,7 @@ class LLMBackend(ABC):
     @abstractmethod
     async def health_check(self) -> bool:
         ...
+
+    async def warmup(self) -> None:
+        """Pre-warm the backend (e.g. start managed services). Called at startup."""
+        return

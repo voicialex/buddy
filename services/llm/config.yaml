@@ -12,7 +12,7 @@ rules: |
 local:
   # 切换本地推理后端：ollama | vllm | rk_llm | auto（重启 LLM service 生效）
   # auto: arm64+aarch64 且 BUDDY_TARGET_DEVICE=npu 时优先 rk_llm，否则回退 ollama
-  active_backend: "ollama"
+  active_backend: "rk_llm"
 
   routing_prompt: |
     判断这个问题应该由本地模型还是云端模型回答。只输出一个词：LOCAL 或 CLOUD。

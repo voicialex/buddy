@@ -235,14 +235,8 @@ resolve_rkllm_url() {
 
 check_rkllm_ready() {
     local url="$1"
-    local code
-    code="$(
-        curl -sS -o /dev/null -w "%{http_code}" --max-time 8 \
-            -H "Content-Type: application/json" \
-            -d '{"model":"buddy","messages":[{"role":"user","content":"ping"}],"stream":false}' \
-            "$url" 2>/dev/null || true
-    )"
-    [[ "$code" == "200" || "$code" == "503" ]]
+    local base_url="${url%/rkllm_chat}"
+    check_http "${base_url}/health"
 }
 
 asr_runtime="$(resolve_asr_runtime)"

@@ -66,6 +66,7 @@ RUN PREBUILT_DIR="$(cat /tmp/prebuilt_dir)" && \
     done && \
     if [ "$DEVICE" = "npu" ]; then \
       cp -a /opt/prebuilt-src/${PREBUILT_DIR}/rknn /opt/prebuilt/rknn; \
+      cp -a /opt/prebuilt-src/${PREBUILT_DIR}/rkllm /opt/prebuilt/rkllm; \
     fi && \
     if [ "$DEVICE" = "gpu" ]; then \
       cp -a /opt/prebuilt-src/${PREBUILT_DIR}/onnxruntime-gpu /opt/prebuilt/onnxruntime-gpu; \
@@ -132,6 +133,7 @@ RUN PREBUILT_DIR="$(cat /tmp/prebuilt_dir)" && \
     done && \
     if [ "$DEVICE" = "npu" ]; then \
       cp -a /opt/prebuilt-src/${PREBUILT_DIR}/rknn /opt/prebuilt/rknn; \
+      cp -a /opt/prebuilt-src/${PREBUILT_DIR}/rkllm /opt/prebuilt/rkllm; \
     fi && \
     if [ "$DEVICE" = "gpu" ]; then \
       cp -a /opt/prebuilt-src/${PREBUILT_DIR}/onnxruntime-gpu /opt/prebuilt/onnxruntime-gpu; \
@@ -278,8 +280,15 @@ RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
            opt/buddy/services/llm/tests \
            opt/buddy/services/llm/__pycache__ \
            opt/buddy/services/llm/backends/__pycache__ \
-           opt/buddy/rkllm_server/.venv \
            opt/buddy/rkllm_server/__pycache__ && \
+    python3.10 -m venv opt/buddy/rkllm_server/.venv && \
+    opt/buddy/rkllm_server/.venv/bin/pip install --no-cache-dir flask && \
+    sha256sum opt/buddy/rkllm_server/requirements.txt | awk '{print $1}' > opt/buddy/rkllm_server/.venv/.requirements.sha256 && \
+    touch opt/buddy/rkllm_server/.venv/.prebuilt && \
+    if [ "$TARGET_ARCH" = "arm64" ]; then \
+      mkdir -p opt/buddy/rkllm_server/lib && \
+      cp -a /opt/prebuilt/rkllm/lib/*.so* opt/buddy/rkllm_server/lib/; \
+    fi && \
     chmod 755 opt/buddy/run.sh opt/buddy/bin/buddy_main \
               opt/buddy/scripts/common.sh \
               opt/buddy/scripts/status.sh \
@@ -293,12 +302,6 @@ RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
 COPY docker/packaging/ros2.sh opt/buddy/bin/ros2
 COPY docker/packaging/setup.bash opt/buddy/setup.bash
 RUN chmod 755 opt/buddy/bin/ros2 opt/buddy/setup.bash
-
-RUN if [ "$DEVICE" = "npu" ] && [ "$TARGET_ARCH" = "arm64" ]; then \
-      tts_cfg="opt/buddy/params/audio.tts.yaml"; \
-      sed -i '/^[[:space:]]*tts:/,/^[[:space:]]*server:/ s/^\([[:space:]]*engine:\).*/\1 "melo-rknn"/' "$tts_cfg" && \
-      sed -i '/^[[:space:]]*tts:/,/^[[:space:]]*server:/ s/^\([[:space:]]*runtime:\).*/\1 "rknnruntime"/' "$tts_cfg"; \
-    fi
 
 RUN DEB_ARCH="$(cat /tmp/deb_arch)" && \
     mkdir -p /output && \
@@ -475,8 +478,11 @@ RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
            opt/buddy/services/llm/tests \
            opt/buddy/services/llm/__pycache__ \
            opt/buddy/services/llm/backends/__pycache__ \
-           opt/buddy/rkllm_server/.venv \
            opt/buddy/rkllm_server/__pycache__ && \
+    python3.12 -m venv opt/buddy/rkllm_server/.venv && \
+    opt/buddy/rkllm_server/.venv/bin/pip install --no-cache-dir flask && \
+    sha256sum opt/buddy/rkllm_server/requirements.txt | awk '{print $1}' > opt/buddy/rkllm_server/.venv/.requirements.sha256 && \
+    touch opt/buddy/rkllm_server/.venv/.prebuilt && \
     chmod 755 opt/buddy/run.sh opt/buddy/bin/buddy_main \
               opt/buddy/scripts/common.sh \
               opt/buddy/scripts/status.sh \
@@ -490,12 +496,6 @@ RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
 COPY docker/packaging/ros2.sh opt/buddy/bin/ros2
 COPY docker/packaging/setup.bash opt/buddy/setup.bash
 RUN chmod 755 opt/buddy/bin/ros2 opt/buddy/setup.bash
-
-RUN if [ "$DEVICE" = "npu" ] && [ "$TARGET_ARCH" = "arm64" ]; then \
-      tts_cfg="opt/buddy/params/audio.tts.yaml"; \
-      sed -i '/^[[:space:]]*tts:/,/^[[:space:]]*server:/ s/^\([[:space:]]*engine:\).*/\1 "melo-rknn"/' "$tts_cfg" && \
-      sed -i '/^[[:space:]]*tts:/,/^[[:space:]]*server:/ s/^\([[:space:]]*runtime:\).*/\1 "rknnruntime"/' "$tts_cfg"; \
-    fi
 
 RUN DEB_ARCH="$(cat /tmp/deb_arch)" && \
     mkdir -p /output && \

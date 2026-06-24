@@ -164,8 +164,24 @@ fi
 if [[ -d "$ROOT_DIR/docker/rkllm_server" ]]; then
   mkdir -p "$DEB_ROOT/opt/buddy/rkllm_server"
   cp -r "$ROOT_DIR/docker/rkllm_server/"* "$DEB_ROOT/opt/buddy/rkllm_server/"
-  rm -rf "$DEB_ROOT/opt/buddy/rkllm_server/.venv" \
-         "$DEB_ROOT/opt/buddy/rkllm_server/__pycache__"
+  rm -rf "$DEB_ROOT/opt/buddy/rkllm_server/__pycache__"
+  if [[ -f "$DEB_ROOT/opt/buddy/rkllm_server/requirements.txt" ]]; then
+    local rkllm_wheels="$DEB_ROOT/opt/buddy/rkllm_server/wheels"
+    local rkllm_venv="$DEB_ROOT/opt/buddy/rkllm_server/.venv"
+    local rkllm_site="$rkllm_venv/lib/python${PYTHON_VER}/site-packages"
+    mkdir -p "$rkllm_wheels" "$rkllm_venv/bin" "$rkllm_site"
+    pip download --platform any --python-version "$PYTHON_VER" --only-binary=:all: \
+      -r "$DEB_ROOT/opt/buddy/rkllm_server/requirements.txt" -d "$rkllm_wheels/" || echo "[WARN] rkllm flask wheels download failed"
+    printf '[virtualenv]\nhome = /usr/bin\ninclude-system-site-packages = true\nversion = %s\n' "$PYTHON_VER" \
+      > "$rkllm_venv/pyvenv.cfg"
+    ln -sf /usr/bin/python3 "$rkllm_venv/bin/python3"
+    ln -sf python3 "$rkllm_venv/bin/python"
+    pip install --quiet --no-deps --platform any --python-version "$PYTHON_VER" --only-binary=:all: \
+      --target "$rkllm_site" "$rkllm_wheels"/*.whl || echo "[WARN] rkllm flask install failed"
+    cp "$VENV_DIR/bin/activate" "$rkllm_venv/bin/activate" 2>/dev/null || true
+    sha256sum "$DEB_ROOT/opt/buddy/rkllm_server/requirements.txt" | awk '{print $1}' > "$rkllm_venv/.requirements.sha256"
+    touch "$rkllm_venv/.prebuilt"
+  fi
 fi
 
 [[ -f "$ROOT_DIR/docker/packaging/buddy.service" ]] && \

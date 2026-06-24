@@ -152,6 +152,24 @@ ACTIVATE_EOF
     mkdir -p "$tmp/opt/buddy/rkllm_server/lib"
     cp -fP "$PREBUILT_DIR/rkllm/lib/"*.so* "$tmp/opt/buddy/rkllm_server/lib/" 2>/dev/null || true
   fi
+  # Pre-build rkllm_server venv (flask only, pure Python)
+  if [[ -f "$tmp/opt/buddy/rkllm_server/requirements.txt" ]]; then
+    local rkllm_wheels="$tmp/opt/buddy/rkllm_server/wheels"
+    local rkllm_venv="$tmp/opt/buddy/rkllm_server/.venv"
+    local rkllm_site="$rkllm_venv/lib/python${PYTHON_VER}/site-packages"
+    mkdir -p "$rkllm_wheels" "$rkllm_venv/bin" "$rkllm_site"
+    pip download --platform any --python-version "$PYTHON_VER" --only-binary=:all: \
+      -r "$tmp/opt/buddy/rkllm_server/requirements.txt" -d "$rkllm_wheels/" || echo "[WARN] rkllm flask wheels download failed"
+    printf '[virtualenv]\nhome = /usr/bin\ninclude-system-site-packages = true\nversion = %s\n' "$PYTHON_VER" \
+      > "$rkllm_venv/pyvenv.cfg"
+    ln -sf /usr/bin/python3 "$rkllm_venv/bin/python3"
+    ln -sf python3 "$rkllm_venv/bin/python"
+    pip install --quiet --no-deps --platform any --python-version "$PYTHON_VER" --only-binary=:all: \
+      --target "$rkllm_site" "$rkllm_wheels"/*.whl || echo "[WARN] rkllm flask install failed"
+    cp "$venv_dir/bin/activate" "$rkllm_venv/bin/activate" 2>/dev/null || true
+    sha256sum "$tmp/opt/buddy/rkllm_server/requirements.txt" | awk '{print $1}' > "$rkllm_venv/.requirements.sha256"
+    touch "$rkllm_venv/.prebuilt"
+  fi
 
   chmod 755 "$tmp/opt/buddy/scripts/start_llm_server.sh" "$tmp/opt/buddy/scripts/common.sh"
   tar czf "$OUT_DIR/buddy-service-llm_${VERSION}_${ARCH}.tar.gz" -C "$tmp" .

@@ -370,6 +370,11 @@ if __name__ == "__main__":
     print("==============================")
     sys.stdout.flush()
 
+    # Health check endpoint (no inference, always returns 200)
+    @app.route('/health', methods=['GET'])
+    def health():
+        return jsonify({'status': 'ok'}), 200
+
     # Create a function to receive data sent by the user using a request
     @app.route('/rkllm_chat', methods=['POST'])
     def receive_message():
@@ -416,12 +421,13 @@ if __name__ == "__main__":
                     input_prompt = []
                     for index, message in enumerate(messages):
 
-                        if message not in recevied_messages and TOOLS is not None:
-                            recevied_messages.append(message)
-                        else:
-                            if index >= 1:
-                                print('skip recevied_messages')
-                                continue
+                        if TOOLS is not None:
+                            if message not in recevied_messages:
+                                recevied_messages.append(message)
+                            else:
+                                if index >= 1:
+                                    print('skip recevied_messages')
+                                    continue
                         
                         if message['role'] == 'system':
                             system_prompt = message['content']
@@ -481,17 +487,19 @@ if __name__ == "__main__":
                     enable_thinking = data.get('enable_thinking')
                     TOOLS = data.get('tools')
                     print("Received messages:", messages)
-                    
-                    input_prompt = []
+
+                    input_prompt = None
+                    role = 'user'
                     for index, message in enumerate(messages):
                         # print(recevied_messages)
-                        if message not in recevied_messages and TOOLS is not None:
-                            recevied_messages.append(message)
-                        else:
-                            if index >= 1:
-                                print('skip recevied_messages')
-                                continue
-                        
+                        if TOOLS is not None:
+                            if message not in recevied_messages:
+                                recevied_messages.append(message)
+                            else:
+                                if index >= 1:
+                                    print('skip recevied_messages')
+                                    continue
+
                         if message['role'] == 'system':
                             system_prompt = message['content']
                             print('skip system messages')
@@ -500,14 +508,14 @@ if __name__ == "__main__":
                         if message['role'] == 'assistant':
                             print('skip assistant messages')
                             continue
-                        
+
                         if message['role'] == 'tool':
                             if not isinstance(input_prompt, list):
                                 input_prompt = []
                             input_prompt.append(message['content'])
                             if index < len(messages) - 1:
                                 continue
-                            
+
                         if message['role'] == 'user':
                             input_prompt = message['content']
                         elif message['role'] == 'tool':
@@ -515,36 +523,39 @@ if __name__ == "__main__":
                             recevied_messages.clear()
                         else:
                             print("role setting error")
-                            
+
                         role = message.get('role')
-                        rkllm_output = ""
-                        
+
                         if TOOLS is not None:
                             rkllm_model.set_function_tools(system_prompt=system_prompt, tools=json.dumps(TOOLS),  tool_response_str="tool_response")
-                        
-                        def generate():
-                            model_thread = threading.Thread(target=rkllm_model.run, args=(role, enable_thinking, input_prompt, ))
-                            model_thread.start()
 
-                            model_thread_finished = False
-                            while not model_thread_finished:
-                                while len(global_text) > 0:
-                                    rkllm_output = global_text.pop(0)
+                    if input_prompt is None:
+                        return jsonify({'status': 'error', 'message': 'No valid input message'}), 400
 
-                                    rkllm_responses["choices"].append(
-                                        {"index": index,
-                                        "delta": {
-                                            "role": "assistant",
-                                            "content": rkllm_output[-1],
-                                        },
-                                        "logprobs": None,
-                                        "finish_reason": "stop" if global_state == 1 else None,
-                                        }
-                                    )
-                                    yield f"{json.dumps(rkllm_responses)}\n\n"
+                    rkllm_output = ""
 
-                                model_thread.join(timeout=0.005)
-                                model_thread_finished = not model_thread.is_alive()
+                    def generate():
+                        model_thread = threading.Thread(target=rkllm_model.run, args=(role, enable_thinking, input_prompt, ))
+                        model_thread.start()
+
+                        model_thread_finished = False
+                        while not model_thread_finished:
+                            while len(global_text) > 0:
+                                rkllm_out = global_text.pop(0)
+                                rkllm_responses["choices"].append(
+                                    {"index": index,
+                                    "delta": {
+                                        "role": "assistant",
+                                        "content": rkllm_out[-1],
+                                    },
+                                    "logprobs": None,
+                                    "finish_reason": "stop" if global_state == 1 else None,
+                                    }
+                                )
+                                yield f"{json.dumps(rkllm_responses)}\n\n"
+
+                            model_thread.join(timeout=0.005)
+                            model_thread_finished = not model_thread.is_alive()
 
                     return Response(generate(), content_type='text/plain')
             else:
