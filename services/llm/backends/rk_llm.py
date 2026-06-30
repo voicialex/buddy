@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import shlex
 import subprocess
 import time
 from typing import AsyncIterator
@@ -65,7 +66,7 @@ class RkLlmBackend(LLMBackend):
     async def _run_shell(self, cmd: str) -> None:
         proc = await asyncio.to_thread(
             subprocess.run,
-            ["bash", "-lc", cmd],
+            shlex.split(cmd),
             check=False,
             capture_output=True,
             text=True,
@@ -78,21 +79,11 @@ class RkLlmBackend(LLMBackend):
     async def _is_service_ready(self) -> bool:
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
-                # Lightweight probes first; avoid triggering model inference unless needed.
                 resp = await client.get(f"{self.base_url}/health")
                 if resp.status_code == 200:
                     return True
                 resp = await client.get(f"{self.base_url}/v1/models")
-                if resp.status_code == 200:
-                    return True
-
-                probe = {
-                    "model": self.model,
-                    "messages": [{"role": "user", "content": "ping"}],
-                    "stream": False,
-                }
-                resp = await client.post(self._url(), json=probe, headers=self._headers())
-                return resp.status_code in (200, 503)
+                return resp.status_code == 200
         except Exception:
             return False
 
@@ -102,7 +93,11 @@ class RkLlmBackend(LLMBackend):
         if not self.autostart or not self.autostart_cmd:
             raise RuntimeError("RKLLM service is not ready")
 
-        async with self._startup_lock:
+        try:
+            await asyncio.wait_for(self._startup_lock.acquire(), timeout=10.0)
+        except asyncio.TimeoutError:
+            raise RuntimeError("RKLLM startup lock timeout — another request is starting the service")
+        try:
             if await self._is_service_ready():
                 return
             logger.info("Autostarting RKLLM server: %s", self.autostart_cmd)
@@ -114,6 +109,10 @@ class RkLlmBackend(LLMBackend):
                     return
                 await asyncio.sleep(0.8)
             raise RuntimeError("RKLLM service autostart timeout")
+        except asyncio.CancelledError:
+            raise
+        finally:
+            self._startup_lock.release()
 
     async def _cancel_idle_stop_task(self) -> None:
         if self._idle_stop_task and not self._idle_stop_task.done():
@@ -273,4 +272,9 @@ class RkLlmBackend(LLMBackend):
         if await self._is_service_ready():
             return
         logger.info("Warming up RKLLM server in background...")
-        asyncio.create_task(self._ensure_ready())
+        async def _warmup_guarded():
+            try:
+                await self._ensure_ready()
+            except Exception as e:
+                logger.error("RKLLM warmup failed: %s", e)
+        asyncio.create_task(_warmup_guarded())

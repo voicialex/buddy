@@ -9,6 +9,7 @@
 #endif
 #include <map>
 #include <memory>
+#include <mutex>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -72,4 +73,8 @@ private:
     // Deduplication state
     std::string last_label_;
     float last_confidence_{0.0f};
+
+    // Protect frame cache and camera states shared across callback groups
+    std::mutex frame_mutex_;
+    std::mutex camera_state_mutex_;
 };

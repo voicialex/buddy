@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="1.0.0"
 ARCH_RAW="$(uname -m)"
 SERVICES="llm"
+ROS2_DISTRO="humble"
 PYTHON_VER="3.12"
 
 usage() {
@@ -15,12 +16,13 @@ Usage: ./scripts/package_services.sh [options]
 Options:
   --arch <x86_64|aarch64|arm64>   Target arch (default: host)
   --version <ver>                 Version in output file names (default: 1.0.0)
+  --ros-distro <humble|jazzy>     ROS 2 distro (default: humble)
   --services <list>               all | llm | funasr | chattts | llm,funasr,...
   --python-ver <3.10|3.12>        Target Python version (default: 3.12, use 3.10 for Humble)
   -h, --help                      Show help
 
 Output:
-  output/<arch>/services/
+  output/<distro>/<arch>/services/
     buddy-service-llm_<ver>_<arch>.tar.gz
     buddy-service-funasr_<ver>_<arch>.tar.gz
     buddy-service-chattts_<ver>_<arch>.tar.gz
@@ -31,6 +33,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --arch) ARCH_RAW="$2"; shift 2 ;;
     --version|-v) VERSION="$2"; shift 2 ;;
+    --ros-distro) ROS2_DISTRO="$2"; shift 2 ;;
     --services) SERVICES="$2"; shift 2 ;;
     --python-ver) PYTHON_VER="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -38,13 +41,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+case "$ROS2_DISTRO" in
+  humble|jazzy) ;;
+  *) echo "[ERROR] Unknown ROS 2 distro: $ROS2_DISTRO" >&2; exit 1 ;;
+esac
+
 case "$ARCH_RAW" in
   x86_64|amd64) ARCH="x86_64" ;;
   aarch64|arm64) ARCH="aarch64" ;;
   *) echo "[ERROR] Unsupported arch: $ARCH_RAW" >&2; exit 1 ;;
 esac
 
-OUT_DIR="$ROOT_DIR/output/$ARCH/services"
+OUT_DIR="$ROOT_DIR/output/${ROS2_DISTRO}/$ARCH/services"
 PREBUILT_DIR="$ROOT_DIR/prebuilt/$ARCH"
 mkdir -p "$OUT_DIR"
 
@@ -64,9 +72,8 @@ build_llm_pkg() {
   cp "$ROOT_DIR/scripts/start_llm_server.sh" "$tmp/opt/buddy/scripts/"
   cp "$ROOT_DIR/scripts/common.sh" "$tmp/opt/buddy/scripts/"
   cp -r "$ROOT_DIR/services/llm/"* "$tmp/opt/buddy/services/llm/"
-  rm -rf "$tmp/opt/buddy/services/llm/tests" \
-         "$tmp/opt/buddy/services/llm/__pycache__" \
-         "$tmp/opt/buddy/services/llm/backends/__pycache__"
+  rm -rf "$tmp/opt/buddy/services/llm/tests"
+  find "$tmp/opt/buddy/services/llm" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 
   # Build pre-installed Python venv with offline wheels
   echo "[INFO] Building pre-installed Python venv ($ARCH)..."
@@ -88,7 +95,9 @@ build_llm_pkg() {
   esac
 
   # Download all dependencies as wheels for target arch (incl. transitive deps)
+  PIP_INDEX="https://mirrors.aliyun.com/pypi/simple/"
   pip download \
+    -i "$PIP_INDEX" --trusted-host mirrors.aliyun.com \
     "${plat_flags[@]}" \
     --python-version "$PYTHON_VER" \
     --only-binary=:all: \
@@ -158,13 +167,14 @@ ACTIVATE_EOF
     local rkllm_venv="$tmp/opt/buddy/rkllm_server/.venv"
     local rkllm_site="$rkllm_venv/lib/python${PYTHON_VER}/site-packages"
     mkdir -p "$rkllm_wheels" "$rkllm_venv/bin" "$rkllm_site"
-    pip download --platform any --python-version "$PYTHON_VER" --only-binary=:all: \
+    pip download -i "$PIP_INDEX" --trusted-host mirrors.aliyun.com \
+      "${plat_flags[@]}" --python-version "$PYTHON_VER" --only-binary=:all: \
       -r "$tmp/opt/buddy/rkllm_server/requirements.txt" -d "$rkllm_wheels/" || echo "[WARN] rkllm flask wheels download failed"
     printf '[virtualenv]\nhome = /usr/bin\ninclude-system-site-packages = true\nversion = %s\n' "$PYTHON_VER" \
       > "$rkllm_venv/pyvenv.cfg"
     ln -sf /usr/bin/python3 "$rkllm_venv/bin/python3"
     ln -sf python3 "$rkllm_venv/bin/python"
-    pip install --quiet --no-deps --platform any --python-version "$PYTHON_VER" --only-binary=:all: \
+    pip install --quiet --no-deps "${plat_flags[@]}" --python-version "$PYTHON_VER" --only-binary=:all: \
       --target "$rkllm_site" "$rkllm_wheels"/*.whl || echo "[WARN] rkllm flask install failed"
     cp "$venv_dir/bin/activate" "$rkllm_venv/bin/activate" 2>/dev/null || true
     sha256sum "$tmp/opt/buddy/rkllm_server/requirements.txt" | awk '{print $1}' > "$rkllm_venv/.requirements.sha256"

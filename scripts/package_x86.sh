@@ -1,26 +1,33 @@
 #!/usr/bin/env bash
 # Package x86_64 build output into a .deb, matching arm64 packaging structure.
-# Usage: ./scripts/package_x86.sh [-v VERSION] [-d DEVICE]
+# Usage: ./scripts/package_x86.sh [-v VERSION] [-d DEVICE] [--ros-distro humble|jazzy]
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="1.0.0"
 DEVICE="cpu"
+ROS2_DISTRO="humble"
 PYTHON_VER="3.12"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -v|--version) VERSION="$2"; shift 2 ;;
     -d|--device)  DEVICE="$2"; shift 2 ;;
+    --ros-distro) ROS2_DISTRO="$2"; shift 2 ;;
     --python-ver) PYTHON_VER="$2"; shift 2 ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
 
+case "$ROS2_DISTRO" in
+  humble|jazzy) ;;
+  *) echo "[ERROR] Unknown ROS 2 distro: $ROS2_DISTRO"; exit 1 ;;
+esac
+
 ARCH="x86_64"
-INSTALL_DIR="$ROOT_DIR/output/$ARCH/install"
+INSTALL_DIR="$ROOT_DIR/output/${ROS2_DISTRO}/$ARCH/install"
 PREBUILT_DIR="$ROOT_DIR/prebuilt/$ARCH"
-OUTPUT_DIR="$ROOT_DIR/output/$ARCH/deb"
+OUTPUT_DIR="$ROOT_DIR/output/${ROS2_DISTRO}/$ARCH/deb"
 DEB_ROOT="$OUTPUT_DIR/deb-root"
 
 if [[ ! -d "$INSTALL_DIR/buddy_app" ]]; then
@@ -83,9 +90,8 @@ cp -rL "$INSTALL_DIR/buddy_app/share/buddy_app/params/"* "$DEB_ROOT/opt/buddy/pa
 if [[ -d "$ROOT_DIR/services/llm" ]]; then
   mkdir -p "$DEB_ROOT/opt/buddy/services/llm"
   cp -r "$ROOT_DIR/services/llm/"* "$DEB_ROOT/opt/buddy/services/llm/"
-  rm -rf "$DEB_ROOT/opt/buddy/services/llm/tests" \
-         "$DEB_ROOT/opt/buddy/services/llm/__pycache__" \
-         "$DEB_ROOT/opt/buddy/services/llm/backends/__pycache__"
+  rm -rf "$DEB_ROOT/opt/buddy/services/llm/tests"
+  find "$DEB_ROOT/opt/buddy/services/llm" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 
   # Build pre-installed Python venv with wheels
   echo "[INFO] Building pre-installed Python venv..."
@@ -164,19 +170,23 @@ fi
 if [[ -d "$ROOT_DIR/docker/rkllm_server" ]]; then
   mkdir -p "$DEB_ROOT/opt/buddy/rkllm_server"
   cp -r "$ROOT_DIR/docker/rkllm_server/"* "$DEB_ROOT/opt/buddy/rkllm_server/"
-  rm -rf "$DEB_ROOT/opt/buddy/rkllm_server/__pycache__"
+  find "$DEB_ROOT/opt/buddy/rkllm_server" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
   if [[ -f "$DEB_ROOT/opt/buddy/rkllm_server/requirements.txt" ]]; then
-    local rkllm_wheels="$DEB_ROOT/opt/buddy/rkllm_server/wheels"
-    local rkllm_venv="$DEB_ROOT/opt/buddy/rkllm_server/.venv"
-    local rkllm_site="$rkllm_venv/lib/python${PYTHON_VER}/site-packages"
+    rkllm_wheels="$DEB_ROOT/opt/buddy/rkllm_server/wheels"
+    rkllm_venv="$DEB_ROOT/opt/buddy/rkllm_server/.venv"
+    rkllm_site="$rkllm_venv/lib/python${PYTHON_VER}/site-packages"
     mkdir -p "$rkllm_wheels" "$rkllm_venv/bin" "$rkllm_site"
-    pip download --platform any --python-version "$PYTHON_VER" --only-binary=:all: \
+    pip download --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 \
+      --platform any --platform linux_x86_64 \
+      --python-version "$PYTHON_VER" --only-binary=:all: \
       -r "$DEB_ROOT/opt/buddy/rkllm_server/requirements.txt" -d "$rkllm_wheels/" || echo "[WARN] rkllm flask wheels download failed"
     printf '[virtualenv]\nhome = /usr/bin\ninclude-system-site-packages = true\nversion = %s\n' "$PYTHON_VER" \
       > "$rkllm_venv/pyvenv.cfg"
     ln -sf /usr/bin/python3 "$rkllm_venv/bin/python3"
     ln -sf python3 "$rkllm_venv/bin/python"
-    pip install --quiet --no-deps --platform any --python-version "$PYTHON_VER" --only-binary=:all: \
+    pip install --quiet --no-deps --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 \
+      --platform any \
+      --python-version "$PYTHON_VER" --only-binary=:all: \
       --target "$rkllm_site" "$rkllm_wheels"/*.whl || echo "[WARN] rkllm flask install failed"
     cp "$VENV_DIR/bin/activate" "$rkllm_venv/bin/activate" 2>/dev/null || true
     sha256sum "$DEB_ROOT/opt/buddy/rkllm_server/requirements.txt" | awk '{print $1}' > "$rkllm_venv/.requirements.sha256"

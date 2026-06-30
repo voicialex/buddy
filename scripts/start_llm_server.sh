@@ -28,7 +28,9 @@ fi
 BUDDY_LD_LIBRARY_PATH="$PROJECT_DIR/lib:$PROJECT_DIR/lib/sherpa:$PROJECT_DIR/lib/funasr:${LD_LIBRARY_PATH:-}"
 
 # ── Ollama config ──
-OLLAMA_LOG="/tmp/buddy-ollama.log"
+LOG_DIR="${BUDDY_LOG_DIR:-/tmp/buddy}"
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+OLLAMA_LOG="$LOG_DIR/ollama.log"
 OLLAMA_MODEL="${BUDDY_OLLAMA_MODEL:-}"
 OLLAMA_URL="http://localhost:11434"
 OLLAMA_BACKEND="${OLLAMA_LLM_LIBRARY:-auto}"  # auto | cpu | cuda_v12
@@ -37,11 +39,11 @@ OLLAMA_BACKEND="${OLLAMA_LLM_LIBRARY:-auto}"  # auto | cpu | cuda_v12
 SERVICE_DIR="$PROJECT_DIR/services/llm"
 VENV_DIR="$SERVICE_DIR/.venv"
 LLM_CONFIG="$SERVICE_DIR/config.yaml"
-LLM_LOG="/tmp/buddy-llm-server.log"
+LLM_LOG="$LOG_DIR/llm.log"
 LLM_PORT=8002
 PROC_PATTERN="python.*services/llm/server.py"
 OLLAMA_PROC_PATTERN="ollama serve"
-RKLLM_LOG="/tmp/buddy-rkllm-server.log"
+RKLLM_LOG="$LOG_DIR/rkllm.log"
 RKLLM_PROC_PATTERN="${BUDDY_RKLLM_PROC_PATTERN:-python3.*flask_server.py}"
 RKLLM_VENV_DIR="$PROJECT_DIR/rkllm_server/.venv"
 RKLLM_REQ_FILE="$PROJECT_DIR/rkllm_server/requirements.txt"
@@ -56,26 +58,10 @@ resolve_local_backend_mode() {
         return 0
     fi
 
-    requested="ollama"
     if [[ -f "$LLM_CONFIG" ]]; then
         requested="$(grep -E '^[[:space:]]*active_backend:' "$LLM_CONFIG" | head -1 | awk -F: '{print $2}' | tr -d ' "' || true)"
-        [[ -z "$requested" ]] && requested="ollama"
     fi
-
-    if [[ "$requested" != "auto" ]]; then
-        echo "$requested"
-        return 0
-    fi
-
-    local arch="${BUDDY_TARGET_ARCH:-}"
-    local device="${BUDDY_TARGET_DEVICE:-}"
-    arch="$(echo "$arch" | tr '[:upper:]' '[:lower:]')"
-    device="$(echo "$device" | tr '[:upper:]' '[:lower:]')"
-    if [[ "$arch" =~ ^(arm64|aarch64)$ ]] && [[ "$device" == "npu" ]]; then
-        echo "rk_llm"
-    else
-        echo "ollama"
-    fi
+    echo "${requested:-ollama}"
 }
 
 resolve_ollama_model() {

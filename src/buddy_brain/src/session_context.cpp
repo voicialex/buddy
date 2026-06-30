@@ -65,6 +65,10 @@ void SessionContext::add_assistant_response(const std::string& text) {
 }
 
 void SessionContext::remove_last_user_turn() {
+    // Remove the most recent turn: assistant response (if present) then user message.
+    if (!history_.empty() && history_.back().rfind("assistant: ", 0) == 0) {
+        history_.pop_back();
+    }
     if (!history_.empty() && history_.back().rfind("user: ", 0) == 0) {
         history_.pop_back();
     }

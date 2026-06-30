@@ -3,6 +3,7 @@
 #include <curl/curl.h>
 #include <opencv2/imgcodecs.hpp>
 
+#include <mutex>
 #include <sstream>
 
 using CallbackReturn = InferenceServerBase::CallbackReturn;
@@ -39,6 +40,7 @@ struct SseCtx {
     std::string source;
     std::string model;
     std::atomic<bool>* cancel;
+    bool aborted_by_cancel{false};
 };
 
 /// Extract string value for a key from simple JSON: {"key":"value",...}
@@ -72,7 +74,10 @@ static bool json_has_true(const std::string& json, const std::string& key) {
 
 static size_t sse_callback(char* ptr, size_t size, size_t nmemb, void* userdata) {
     auto* ctx = static_cast<SseCtx*>(userdata);
-    if (ctx->cancel->load()) return 0;
+    if (ctx->cancel->load()) {
+        ctx->aborted_by_cancel = true;
+        return 0;
+    }
 
     size_t bytes = size * nmemb;
     ctx->buffer.append(ptr, bytes);
@@ -133,8 +138,10 @@ CallbackReturn LlmBridgeNode::on_configure(const rclcpp_lifecycle::State&) {
 
     declare_parameter("server_url", "http://127.0.0.1:8002");
     declare_parameter("mode", "local_route");
+    declare_parameter("request_timeout_sec", 120);
 
     server_url_ = get_parameter("server_url").as_string();
+    while (!server_url_.empty() && server_url_.back() == '/') server_url_.pop_back();
     mode_ = get_parameter("mode").as_string();
     if (!is_valid_llm_mode(mode_)) {
         RCLCPP_ERROR(get_logger(),
@@ -142,8 +149,14 @@ CallbackReturn LlmBridgeNode::on_configure(const rclcpp_lifecycle::State&) {
                      mode_.c_str());
         return CallbackReturn::ERROR;
     }
+    request_timeout_sec_ = get_parameter("request_timeout_sec").as_int();
+    if (request_timeout_sec_ < 10) {
+        RCLCPP_WARN(get_logger(), "request_timeout_sec=%d too small, clamping to 10", request_timeout_sec_);
+        request_timeout_sec_ = 10;
+    }
 
-    curl_global_init(CURL_GLOBAL_DEFAULT);
+    static std::once_flag curl_init_flag;
+    std::call_once(curl_init_flag, []() { curl_global_init(CURL_GLOBAL_DEFAULT); });
     create_action_server();
     return CallbackReturn::SUCCESS;
 }
@@ -156,10 +169,15 @@ void LlmBridgeNode::execute(std::shared_ptr<GoalHandle> goal_handle) {
     std::ostringstream body;
     body << R"({"messages":[)";
     for (auto& h : goal->dialog_history) {
-        auto colon = h.find(": ");
-        if (colon != std::string::npos) {
-            body << R"({"role":")" << json_escape(h.substr(0, colon))
-                 << R"(","content":")" << json_escape(h.substr(colon + 2)) << R"("},)";
+        if (h.rfind("user: ", 0) == 0) {
+            body << R"({"role":"user","content":")" << json_escape(h.substr(6)) << R"("},)";
+        } else if (h.rfind("assistant: ", 0) == 0) {
+            body << R"({"role":"assistant","content":")" << json_escape(h.substr(11)) << R"("},)";
+        } else {
+            auto colon = h.find(": ");
+            if (colon != std::string::npos) {
+                body << R"({"role":"user","content":")" << json_escape(h.substr(colon + 2)) << R"("},)";
+            }
         }
     }
     std::string user_text = goal->user_text;
@@ -209,14 +227,22 @@ void LlmBridgeNode::execute(std::shared_ptr<GoalHandle> goal_handle) {
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body_str.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, sse_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)request_timeout_sec_);
 
-    auto res = curl_easy_perform(curl);
+    CURLcode res = CURLE_OK;
+    try {
+        res = curl_easy_perform(curl);
+    } catch (...) {
+        // sse_callback / publish_feedback threw — ensure cleanup then rethrow
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        throw;
+    }
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
     auto result = std::make_shared<Inference::Result>();
-    if (cancel_requested_.load()) {
+    if (cancel_requested_.load() || ctx.aborted_by_cancel) {
         result->full_response = ctx.full_response;
         result->success = false;
         result->error_message = "canceled";

@@ -8,7 +8,9 @@ source "$SCRIPT_DIR/common.sh"
 BOARD_HOST="192.168.2.117"
 BOARD_USER="pi"
 BOARD_PASS="pi"
-BOARD_DEB_PATH="~/buddy-robot_1.0.0_arm64_npu.deb"
+ROS2_DISTRO="humble"
+VERSION="1.0.0"
+BOARD_DEB_PATH="~/buddy-robot_${VERSION}_arm64_npu.deb"
 BOARD_OUTPUT_BASE="~/output"
 RUN_SECONDS="25"
 BUILD_SERVICES="0"
@@ -25,6 +27,8 @@ Core options:
   --host <ip>             Board IP/hostname (default: ${BOARD_HOST})
   --user <name>           SSH user (default: ${BOARD_USER})
   --password <pass>       SSH password (default: ${BOARD_PASS})
+  --ros-distro <distro>   ROS 2 distro (default: ${ROS2_DISTRO})
+  --version <ver>         Package version (default: ${VERSION})
   --run-seconds <sec>     Run duration before auto-stop (default: ${RUN_SECONDS})
   --log-dir <dir>         Local log directory (default: ${LOCAL_LOG_DIR})
   -h, --help              Show this help
@@ -87,6 +91,15 @@ while [[ $# -gt 0 ]]; do
             ;;
         --password)
             BOARD_PASS="$2"
+            shift 2
+            ;;
+        --ros-distro)
+            ROS2_DISTRO="$2"
+            shift 2
+            ;;
+        --version)
+            VERSION="$2"
+            BOARD_DEB_PATH="~/buddy-robot_${VERSION}_arm64_npu.deb"
             shift 2
             ;;
         --run-seconds)
@@ -195,15 +208,20 @@ if ! [[ "$RUN_SECONDS" =~ ^[0-9]+$ ]] || [[ "$RUN_SECONDS" -lt 1 ]]; then
     exit 1
 fi
 
-DEB_PATH="$ROOT_DIR/output/aarch64/deb/buddy-robot_1.0.0_arm64_npu.deb"
-MODELS_GLOB="$ROOT_DIR/output/aarch64/deb/buddy-models_*_npu.tar.gz"
+case "$ROS2_DISTRO" in
+  humble|jazzy) ;;
+  *) log_err "Unknown ROS 2 distro: $ROS2_DISTRO"; exit 1 ;;
+esac
+
+DEB_PATH="$ROOT_DIR/output/${ROS2_DISTRO}/aarch64/deb/buddy-robot_${VERSION}_arm64_npu.deb"
+MODELS_GLOB="$ROOT_DIR/output/${ROS2_DISTRO}/aarch64/deb/buddy-models_*_npu.tar.gz"
 MODELS_PATH="$(ls -t $MODELS_GLOB 2>/dev/null | head -1 || true)"
 MODELS_REMOTE_PATH="~/buddy-models_npu.tar.gz"
 MODELS_REMOTE_SHA_PATH="~/buddy-models_npu.sha256"
 MODELS_REMOTE_CACHE_DIR="${BOARD_OUTPUT_BASE}/buddy-models-cache"
 DEB_REMOTE_SHA_PATH="~/buddy-runtime.sha256"
 
-SVC_DIR="$ROOT_DIR/output/aarch64/services"
+SVC_DIR="$ROOT_DIR/output/${ROS2_DISTRO}/aarch64/services"
 SVC_LLM_PATH="$(ls -t "$SVC_DIR"/buddy-service-llm_*_aarch64.tar.gz 2>/dev/null | head -1 || true)"
 SVC_FUNASR_PATH="$(ls -t "$SVC_DIR"/buddy-service-funasr_*_aarch64.tar.gz 2>/dev/null | head -1 || true)"
 SVC_CHATTTS_PATH="$(ls -t "$SVC_DIR"/buddy-service-chattts_*_aarch64.tar.gz 2>/dev/null | head -1 || true)"
@@ -216,10 +234,10 @@ SCP_BASE=(sshpass -p "$BOARD_PASS" scp -o StrictHostKeyChecking=no)
 
 log_stage "Step 1/5: Build artifacts"
 if [[ "$DO_BUILD" == "1" ]]; then
-    log_step "Running ./build.sh -t arm64 -d npu"
+    log_step "Running ./build.sh -t arm64 -d npu --ros-distro $ROS2_DISTRO"
     (
         cd "$ROOT_DIR"
-        ./build.sh -t arm64 -d npu
+        ./build.sh -t arm64 -d npu --ros-distro "$ROS2_DISTRO"
     )
     log_ok "Build finished"
 else
@@ -227,10 +245,12 @@ else
 fi
 
 if [[ "$BUILD_SERVICES" == "1" ]]; then
-    log_step "Running ./scripts/package_services.sh --arch arm64"
+    py_ver="3.10"
+    [[ "$ROS2_DISTRO" == "jazzy" ]] && py_ver="3.12"
+    log_step "Running ./scripts/package_services.sh --arch arm64 --ros-distro $ROS2_DISTRO --python-ver $py_ver --version $VERSION"
     (
         cd "$ROOT_DIR"
-        ./scripts/package_services.sh --arch arm64
+        ./scripts/package_services.sh --arch arm64 --ros-distro "$ROS2_DISTRO" --python-ver "$py_ver" --version "$VERSION"
     )
     SVC_LLM_PATH="$(ls -t "$SVC_DIR"/buddy-service-llm_*_aarch64.tar.gz 2>/dev/null | head -1 || true)"
     SVC_FUNASR_PATH="$(ls -t "$SVC_DIR"/buddy-service-funasr_*_aarch64.tar.gz 2>/dev/null | head -1 || true)"
@@ -398,17 +418,18 @@ fi
 
 if [[ "$DO_RUN" == "1" ]]; then
     log_stage "Step 4/5: Run buddy and capture log"
-    log_step "Running on board for ${RUN_SECONDS}s -> /tmp/buddy-run.log"
+    log_step "Running on board for ${RUN_SECONDS}s -> /tmp/buddy/buddy-main.log"
     set +e
     "${SSH_BASE[@]}" "set -euo pipefail; \
+        mkdir -p /tmp/buddy; \
         cd ${BOARD_OUTPUT_BASE}/opt/buddy; \
-        rm -f /tmp/buddy-run.log /tmp/buddy-run.status; \
-        set +e; timeout --signal=INT ${RUN_SECONDS} ./run.sh > /tmp/buddy-run.log 2>&1; rc=\$?; set -e; \
+        rm -f /tmp/buddy/buddy-main.log /tmp/buddy/buddy-main.status; \
+        set +e; timeout --signal=INT ${RUN_SECONDS} ./run.sh > /tmp/buddy/buddy-main.log 2>&1; rc=\$?; set -e; \
         if [ \$rc -eq 124 ] || [ \$rc -eq 130 ]; then rc=0; fi; \
         pkill -f '/opt/buddy/bin/buddy_main' >/dev/null 2>&1 || true; \
         pkill -f '/output/opt/buddy/bin/buddy_main' >/dev/null 2>&1 || true; \
-        echo \$rc > /tmp/buddy-run.status; \
-        tail -n 80 /tmp/buddy-run.log"
+        echo \$rc > /tmp/buddy/buddy-main.status; \
+        tail -n 80 /tmp/buddy/buddy-main.log"
     run_ssh_rc=$?
     set -e
     if [[ "$run_ssh_rc" -ne 0 ]]; then
@@ -418,8 +439,8 @@ if [[ "$DO_RUN" == "1" ]]; then
     if [[ "$DO_FETCH_LOG" == "1" ]]; then
         ts="$(date +%Y%m%d_%H%M%S)"
         local_log="${LOCAL_LOG_DIR}/buddy-run_${BOARD_HOST}_${ts}.log"
-        log_step "Fetching /tmp/buddy-run.log -> ${local_log}"
-        "${SCP_BASE[@]}" "${BOARD_USER}@${BOARD_HOST}:/tmp/buddy-run.log" "$local_log"
+        log_step "Fetching /tmp/buddy/buddy-main.log -> ${local_log}"
+        "${SCP_BASE[@]}" "${BOARD_USER}@${BOARD_HOST}:/tmp/buddy/buddy-main.log" "$local_log"
         log_ok "Log fetched: $local_log"
     else
         log_skip "Fetch log"
@@ -429,15 +450,15 @@ else
     if [[ "$DO_FETCH_LOG" == "1" ]]; then
         ts="$(date +%Y%m%d_%H%M%S)"
         local_log="${LOCAL_LOG_DIR}/buddy-run_${BOARD_HOST}_${ts}.log"
-        log_step "Fetching existing /tmp/buddy-run.log -> ${local_log}"
+        log_step "Fetching existing /tmp/buddy/buddy-main.log -> ${local_log}"
         set +e
-        "${SCP_BASE[@]}" "${BOARD_USER}@${BOARD_HOST}:/tmp/buddy-run.log" "$local_log"
+        "${SCP_BASE[@]}" "${BOARD_USER}@${BOARD_HOST}:/tmp/buddy/buddy-main.log" "$local_log"
         fetch_rc=$?
         set -e
         if [[ "$fetch_rc" -eq 0 ]]; then
             log_ok "Log fetched: $local_log"
         else
-            log_err "No /tmp/buddy-run.log on board (or fetch failed)"
+            log_err "No /tmp/buddy/buddy-main.log on board (or fetch failed)"
         fi
     fi
 fi

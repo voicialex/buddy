@@ -16,7 +16,7 @@ std::unique_ptr<InferBackend> create_infer_backend(const std::string& runtime) {
         return create_rknn_backend();
     }
 #endif
-    if (runtime == "onnxruntime" || runtime == "auto") {
+    if (runtime == "onnxruntime") {
         return create_ort_backend();
     }
     throw std::runtime_error("Unknown infer runtime: " + runtime);

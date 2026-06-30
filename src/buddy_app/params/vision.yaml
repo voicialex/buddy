@@ -1,7 +1,7 @@
 vision:
   ros__parameters:
-    engine: "auto"              # "auto" | "retinaface" | "haar"
-    runtime: "auto"             # "auto" | "onnxruntime" | "rknnruntime"
+    engine: "retinaface"        # "retinaface" | "haar"
+    runtime: "onnxruntime"      # "onnxruntime" | "rknnruntime"
     face_model_dir: "models/face_emotion"
     emotion_model_path: "models/emotion"
     inference_interval_ms: 500

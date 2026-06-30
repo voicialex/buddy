@@ -15,30 +15,11 @@ struct TurnMetrics {
     TimePoint first_sentence_at{};
     TimePoint tts_done_at{};
 
-    double asr_latency_ms() const {
-        if (wake_at == TimePoint{} || asr_at == TimePoint{}) return -1.0;
-        return std::chrono::duration<double, std::milli>(asr_at - wake_at).count();
-    }
-
-    double llm_first_token_ms() const {
-        if (asr_at == TimePoint{} || llm_first_token_at == TimePoint{}) return -1.0;
-        return std::chrono::duration<double, std::milli>(llm_first_token_at - asr_at).count();
-    }
-
-    double first_sentence_ms() const {
-        if (asr_at == TimePoint{} || first_sentence_at == TimePoint{}) return -1.0;
-        return std::chrono::duration<double, std::milli>(first_sentence_at - asr_at).count();
-    }
-
-    double tts_total_ms() const {
-        if (first_sentence_at == TimePoint{} || tts_done_at == TimePoint{}) return -1.0;
-        return std::chrono::duration<double, std::milli>(tts_done_at - first_sentence_at).count();
-    }
-
-    double end_to_end_ms() const {
-        if (wake_at == TimePoint{} || tts_done_at == TimePoint{}) return -1.0;
-        return std::chrono::duration<double, std::milli>(tts_done_at - wake_at).count();
-    }
+    double asr_latency_ms() const       { return diff_ms(wake_at, asr_at); }
+    double llm_first_token_ms() const   { return diff_ms(asr_at, llm_first_token_at); }
+    double first_sentence_ms() const    { return diff_ms(asr_at, first_sentence_at); }
+    double tts_total_ms() const         { return diff_ms(first_sentence_at, tts_done_at); }
+    double end_to_end_ms() const        { return diff_ms(wake_at, tts_done_at); }
 
     void reset() {
         wake_at = {};
@@ -50,6 +31,12 @@ struct TurnMetrics {
     }
 
     std::string to_log_string() const;
+
+private:
+    static double diff_ms(TimePoint from, TimePoint to) {
+        if (from == TimePoint{} || to == TimePoint{}) return -1.0;
+        return std::chrono::duration<double, std::milli>(to - from).count();
+    }
 };
 
 class SessionContext {

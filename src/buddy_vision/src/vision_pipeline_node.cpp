@@ -13,20 +13,13 @@ VisionPipelineNode::VisionPipelineNode(const rclcpp::NodeOptions& options)
 CallbackReturn VisionPipelineNode::on_configure(const rclcpp_lifecycle::State&) {
     RCLCPP_INFO(get_logger(), "VisionPipelineNode: configuring");
 
-    // Engine selection: "auto" | "retinaface" | "haar"
-    std::string engine = this->get_parameter_or("engine", std::string("auto"));
-    std::string runtime = this->get_parameter_or("runtime", std::string("auto"));
+    // Engine selection: "retinaface" | "haar"
+    std::string engine = this->get_parameter_or("engine", std::string("retinaface"));
+    std::string runtime = this->get_parameter_or("runtime", std::string("onnxruntime"));
     std::string face_model_dir = this->get_parameter_or("face_model_dir", std::string("models/face_emotion"));
     std::string haar_model_path = this->get_parameter_or("emotion_model_path", std::string("models/emotion"));
 
-    bool use_retinaface = false;
-    if (engine == "retinaface") {
-        use_retinaface = true;
-    } else if (engine == "auto") {
-        namespace fs = std::filesystem;
-        use_retinaface = fs::exists(fs::path(face_model_dir) / "retinaface_mnet_v2_fp16.onnx") ||
-                         fs::exists(fs::path(face_model_dir) / "retinaface_mnet_v2_fp16.rknn");
-    }
+    bool use_retinaface = (engine == "retinaface");
 
     if (use_retinaface) {
         auto try_load_retinaface = [&](const std::string& selected_runtime) -> bool {
@@ -42,9 +35,7 @@ CallbackReturn VisionPipelineNode::on_configure(const rclcpp_lifecycle::State&) 
         };
 
         if (!try_load_retinaface(runtime)) {
-            // Typical board issue: RKNN model built for a different chip (e.g. rk3576 on rk3588).
-            // In that case, retry with ONNX before falling back to legacy Haar pipeline.
-            if (runtime == "auto" || runtime == "rknnruntime") {
+            if (runtime == "rknnruntime") {
                 RCLCPP_WARN(get_logger(), "RetinaFace load with runtime=%s failed, retrying ONNX fallback", runtime.c_str());
                 if (try_load_retinaface("onnxruntime")) {
                     use_retinaface = true;
@@ -157,16 +148,23 @@ CallbackReturn VisionPipelineNode::on_error(const rclcpp_lifecycle::State&) {
 }
 
 void VisionPipelineNode::on_emotion_frame(const sensor_msgs::msg::Image::ConstSharedPtr& msg) {
-    latest_emotion_frame_ = msg;
+    {
+        std::lock_guard<std::mutex> lock(frame_mutex_);
+        latest_emotion_frame_ = msg;
+    }
     update_camera_state("emotion");
 }
 
 void VisionPipelineNode::on_game_frame(const sensor_msgs::msg::Image::ConstSharedPtr& msg) {
-    latest_game_frame_ = msg;
+    {
+        std::lock_guard<std::mutex> lock(frame_mutex_);
+        latest_game_frame_ = msg;
+    }
     update_camera_state("game");
 }
 
 void VisionPipelineNode::update_camera_state(const std::string& name) {
+    std::lock_guard<std::mutex> lock(camera_state_mutex_);
     auto& st = camera_states_[name];
     if (!st.online) {
         RCLCPP_INFO(get_logger(), "[camera:%s] online", name.c_str());
@@ -178,6 +176,7 @@ void VisionPipelineNode::update_camera_state(const std::string& name) {
 void VisionPipelineNode::check_camera_timeouts() {
     const auto timeout = rclcpp::Duration::from_seconds(3.0);
     const auto t = now();
+    std::lock_guard<std::mutex> lock(camera_state_mutex_);
     for (auto& [name, st] : camera_states_) {
         if (st.online && (t - st.last_frame_time) > timeout) {
             RCLCPP_WARN(get_logger(),
@@ -191,11 +190,24 @@ void VisionPipelineNode::check_camera_timeouts() {
 
 void VisionPipelineNode::do_inference() {
     check_camera_timeouts();
-    if (!latest_emotion_frame_ || !emotion_model_) {
+
+    sensor_msgs::msg::Image::ConstSharedPtr frame;
+    {
+        std::lock_guard<std::mutex> lock(frame_mutex_);
+        if (!latest_emotion_frame_ || !emotion_model_) {
+            return;
+        }
+        frame = latest_emotion_frame_;
+    }
+
+    cv_bridge::CvImageConstPtr cv_ptr;
+    try {
+        cv_ptr = cv_bridge::toCvShare(frame, "bgr8");
+    } catch (const cv_bridge::Exception& e) {
+        RCLCPP_WARN(get_logger(), "cv_bridge conversion failed: %s", e.what());
         return;
     }
 
-    auto cv_ptr = cv_bridge::toCvShare(latest_emotion_frame_, "bgr8");
     auto result = emotion_model_->inference(cv_ptr->image);
 
     if (result.label != last_label_ || std::abs(result.confidence - last_confidence_) > 0.05f) {
@@ -218,6 +230,7 @@ void VisionPipelineNode::do_inference() {
 void VisionPipelineNode::handle_capture(const std::string& camera_name,
                                         const std::shared_ptr<buddy_interfaces::srv::CaptureImage::Request>,
                                         std::shared_ptr<buddy_interfaces::srv::CaptureImage::Response> response) {
+    std::lock_guard<std::mutex> lock(frame_mutex_);
     auto& frame = (camera_name == "emotion") ? latest_emotion_frame_ : latest_game_frame_;
     if (frame) {
         response->image = *frame;

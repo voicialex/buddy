@@ -356,8 +356,7 @@ if __name__ == "__main__":
             exit()
 
     # Fix frequency
-    command = "sudo bash fix_freq_{}.sh".format(args.target_platform)
-    subprocess.run(command, shell=True)
+    subprocess.run(["sudo", "bash", f"fix_freq_{args.target_platform}.sh"])
 
     # Set resource limit
     resource.setrlimit(resource.RLIMIT_NOFILE, (102400, 102400))
@@ -383,7 +382,7 @@ if __name__ == "__main__":
         global is_blocking
 
         # If the server is in a blocking state, return a specific response.
-        if is_blocking or global_state==0:
+        if is_blocking:
             return jsonify({'status': 'error', 'message': 'RKLLM_Server is busy! Maybe you can try again later.'}), 503
         
         lock.acquire()
@@ -490,7 +489,9 @@ if __name__ == "__main__":
 
                     input_prompt = None
                     role = 'user'
-                    for index, message in enumerate(messages):
+                    index = 0
+                    for i, message in enumerate(messages):
+                        index = i
                         # print(recevied_messages)
                         if TOOLS is not None:
                             if message not in recevied_messages:
@@ -546,7 +547,7 @@ if __name__ == "__main__":
                                     {"index": index,
                                     "delta": {
                                         "role": "assistant",
-                                        "content": rkllm_out[-1],
+                                        "content": rkllm_out,
                                     },
                                     "logprobs": None,
                                     "finish_reason": "stop" if global_state == 1 else None,

@@ -282,7 +282,7 @@ RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
            opt/buddy/services/llm/backends/__pycache__ \
            opt/buddy/rkllm_server/__pycache__ && \
     python3.10 -m venv opt/buddy/rkllm_server/.venv && \
-    opt/buddy/rkllm_server/.venv/bin/pip install --no-cache-dir flask && \
+    opt/buddy/rkllm_server/.venv/bin/pip install --no-cache-dir -r opt/buddy/rkllm_server/requirements.txt && \
     sha256sum opt/buddy/rkllm_server/requirements.txt | awk '{print $1}' > opt/buddy/rkllm_server/.venv/.requirements.sha256 && \
     touch opt/buddy/rkllm_server/.venv/.prebuilt && \
     if [ "$TARGET_ARCH" = "arm64" ]; then \
@@ -480,7 +480,7 @@ RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
            opt/buddy/services/llm/backends/__pycache__ \
            opt/buddy/rkllm_server/__pycache__ && \
     python3.12 -m venv opt/buddy/rkllm_server/.venv && \
-    opt/buddy/rkllm_server/.venv/bin/pip install --no-cache-dir flask && \
+    opt/buddy/rkllm_server/.venv/bin/pip install --no-cache-dir -r opt/buddy/rkllm_server/requirements.txt && \
     sha256sum opt/buddy/rkllm_server/requirements.txt | awk '{print $1}' > opt/buddy/rkllm_server/.venv/.requirements.sha256 && \
     touch opt/buddy/rkllm_server/.venv/.prebuilt && \
     chmod 755 opt/buddy/run.sh opt/buddy/bin/buddy_main \

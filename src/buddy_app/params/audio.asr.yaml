@@ -14,9 +14,8 @@ audio:
       score: 2.2
 
     # ASR: mode = "local" | "server"
-    #      engine = "auto" | "sherpa-onnx" | "zipformer-rknn"
-    #      alias: "native" (compat) -> zipformer-rknn
-    #      runtime = "auto" | "onnxruntime" | "rknnruntime"
+    #      engine = "sherpa-onnx" | "zipformer-rknn"
+    #      runtime = "onnxruntime" | "rknnruntime"
     asr:
       mode: "local"
       engine: "sherpa-onnx"

@@ -14,4 +14,5 @@ class LlmBridgeNode : public InferenceServerBase {
    private:
     std::string server_url_;
     std::string mode_;
+    int request_timeout_sec_ = 120;
 };

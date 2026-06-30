@@ -26,6 +26,30 @@ def parse_decision(response: str) -> str:
     return "LOCAL"
 
 
+# 关键词规则优先于 LLM 路由决策，避免每轮都付 8s 路由延迟。
+# 命中即定 LOCAL/CLOUD；未命中再走 LLM 判定。
+CLOUD_KEYWORDS = (
+    "天气", "新闻", "股价", "股票", "比分", "赛事", "汇率",
+    "today", "weather", "news", "stock", "price",
+)
+LOCAL_KEYWORDS = (
+    "你好", "早上好", "晚上好", "再见", "谢谢", "你是谁",
+    "hello", "hi", "hey", "bye", "thanks",
+)
+
+
+def rule_based_decision(user_text: str) -> str | None:
+    """Return 'LOCAL'/'CLOUD' if a keyword rule matches, else None."""
+    text = user_text.strip().lower()
+    if not text:
+        return None
+    if any(k in text for k in CLOUD_KEYWORDS):
+        return "CLOUD"
+    if any(k in text for k in LOCAL_KEYWORDS):
+        return "LOCAL"
+    return None
+
+
 class Router:
     def __init__(self, local: LLMBackend | None, cloud: LLMBackend | None):
         self.local = local
@@ -65,57 +89,55 @@ class Router:
                     yield StreamChunk(text="Local backend not configured", source="local", done=True)
                     return
 
-                # No cloud backend: skip route decision and answer locally immediately.
-                # This avoids long "decision" RTT on slow local models (e.g. Ollama on CPU).
-                decision = "LOCAL"
-                if self.cloud:
-                    t0 = time.time()
-                    try:
-                        decision_response = await asyncio.wait_for(
-                            self.local.complete(messages, routing_prompt),
-                            timeout=8.0,
-                        )
-                        decision = parse_decision(decision_response)
-                        decision_ms = int((time.time() - t0) * 1000)
-                        logger.info(f"[ROUTE] {'='*40}")
-                        logger.info(f"[ROUTE] DECISION: {decision} ({decision_ms}ms)")
-                        logger.info(f"[ROUTE] {'='*40}")
-                    except Exception as e:
-                        logger.warning(f"[ROUTE] decision failed, fallback LOCAL: {e}")
-                        decision = "LOCAL"
+                # 1) 关键词规则前置：命中即定路由，跳过 LLM 决策延迟
+                user_text = messages[-1].get("content", "") if messages else ""
+                decision = rule_based_decision(user_text)
+                if decision:
+                    logger.info(f"[ROUTE] rule-based decision: {decision}")
                 else:
-                    logger.info("[ROUTE] cloud backend unavailable, bypass decision and use LOCAL")
+                    # 2) 无 cloud backend：跳过决策直接本地
+                    decision = "LOCAL"
+                    if self.cloud:
+                        t0 = time.monotonic()
+                        try:
+                            decision_response = await asyncio.wait_for(
+                                self.local.complete(messages, routing_prompt),
+                                timeout=2.0,
+                            )
+                            decision = parse_decision(decision_response)
+                            decision_ms = int((time.monotonic() - t0) * 1000)
+                            logger.info(f"[ROUTE] {'='*40}")
+                            logger.info(f"[ROUTE] DECISION: {decision} ({decision_ms}ms)")
+                            logger.info(f"[ROUTE] {'='*40}")
+                        except asyncio.TimeoutError:
+                            logger.warning("[ROUTE] decision timeout after 2s, fallback LOCAL")
+                            decision = "LOCAL"
+                        except Exception as e:
+                            logger.warning(f"[ROUTE] decision failed, fallback LOCAL: {e}")
+                            decision = "LOCAL"
+                    else:
+                        logger.info("[ROUTE] cloud backend unavailable, bypass decision and use LOCAL")
 
-                # Step 2: Always stream local reply first (fills the gap)
-                t1 = time.time()
-                local_text = []
-                async for chunk in self.local.stream_chat(messages, local_system_prompt):
-                    local_text.append(chunk)
-                    yield StreamChunk(text=chunk, source="local", done=False, model=local_model)
-                local_gen_ms = int((time.time() - t1) * 1000)
-                logger.info(f"[ROUTE] local({local_model}): {''.join(local_text)[:120]!r}")
-                logger.info(f"[DONE] → local, model={local_model}, time={local_gen_ms}ms")
-
-                # Step 3: If CLOUD, append cloud response after local
                 if decision == "CLOUD" and self.cloud:
-                    # Signal local portion done (not final done)
-                    yield StreamChunk(text="", source="local", done=False, model=local_model)
-                    t2 = time.time()
-                    cloud_text = []
+                    t2 = time.monotonic()
                     try:
                         async for chunk in self.cloud.stream_chat(messages, cloud_system_prompt, image_base64=image_base64):
-                            cloud_text.append(chunk)
                             yield StreamChunk(text=chunk, source="cloud", done=False, model=cloud_model)
-                        cloud_ms = int((time.time() - t2) * 1000)
-                        logger.info(f"[ROUTE] cloud({cloud_model}): {''.join(cloud_text)[:120]!r}")
+                        cloud_ms = int((time.monotonic() - t2) * 1000)
                         logger.info(f"[DONE] → cloud, model={cloud_model}, time={cloud_ms}ms")
-                        yield StreamChunk(text="", source="cloud", done=True, model=cloud_model)
                     except Exception as e:
-                        logger.error(f"[ROUTE] cloud error: {e}, using local reply only")
-                        yield StreamChunk(text="", source="local", done=True, model=local_model)
+                        logger.error(f"[ROUTE] cloud stream error: {e}")
+                        yield StreamChunk(text="Cloud service unavailable", source="cloud", done=True, model=cloud_model)
+                        return
+                    yield StreamChunk(text="", source="cloud", done=True, model=cloud_model)
                 else:
                     if decision == "CLOUD" and not self.cloud:
                         logger.warning("[ROUTE] decision=CLOUD but cloud not configured")
+                    t1 = time.monotonic()
+                    async for chunk in self.local.stream_chat(messages, local_system_prompt):
+                        yield StreamChunk(text=chunk, source="local", done=False, model=local_model)
+                    local_gen_ms = int((time.monotonic() - t1) * 1000)
+                    logger.info(f"[DONE] → local, model={local_model}, time={local_gen_ms}ms")
                     yield StreamChunk(text="", source="local", done=True, model=local_model)
 
             case _:

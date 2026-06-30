@@ -1,7 +1,7 @@
-ChatTTS
-fastapi
-uvicorn[standard]
-scipy
-numpy
-requests
+ChatTTS==0.2.5
+fastapi==0.136.3
+uvicorn[standard]==0.48.0
+scipy==1.15.3
+numpy==2.2.6
+requests==2.34.2
 # torch 和 torchaudio 由 start_tts_server.sh 根据硬件自动安装（CPU/CUDA），不在此处声明

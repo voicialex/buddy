@@ -37,9 +37,9 @@ Examples:
   ./build.sh --packages-select X    # x86 single package
 
 Optional service packages (LLM, ASR, TTS) — built automatically with arm64:
-  output/aarch64/services/buddy-service-llm_<ver>_aarch64.tar.gz
-  output/aarch64/services/buddy-service-funasr_<ver>_aarch64.tar.gz
-  output/aarch64/services/buddy-service-chattts_<ver>_aarch64.tar.gz
+  output/<distro>/aarch64/services/buddy-service-llm_<ver>_aarch64.tar.gz
+  output/<distro>/aarch64/services/buddy-service-funasr_<ver>_aarch64.tar.gz
+  output/<distro>/aarch64/services/buddy-service-chattts_<ver>_aarch64.tar.gz
 
 One-command board deploy/run (incremental runtime/models/services):
   ./scripts/deploy_run_arm64_npu.sh --ros-distro ${ROS2_DISTRO:-humble}
@@ -162,8 +162,8 @@ build_arm64() {
   echo "[INFO] Building service packages..."
   local py_ver="3.10"
   [[ "$ROS2_DISTRO" == "jazzy" ]] && py_ver="3.12"
-  "$ROOT_DIR/scripts/package_services.sh" --arch arm64 --version "$version" --python-ver "$py_ver"
-  local svc_dir="$ROOT_DIR/output/aarch64/services"
+  "$ROOT_DIR/scripts/package_services.sh" --arch arm64 --version "$version" --python-ver "$py_ver" --ros-distro "$ROS2_DISTRO"
+  local svc_dir="$ROOT_DIR/output/${ROS2_DISTRO}/aarch64/services"
   for svc in "$svc_dir"/*.tar.gz; do
     [[ -f "$svc" ]] && echo "[OK] $(basename "$svc") ($(du -sh "$svc" | cut -f1))"
   done
@@ -287,11 +287,11 @@ build_x86() {
   if [[ "$PACKAGE" == true ]]; then
     local py_ver="3.10"
     [[ "$ROS2_DISTRO" == "jazzy" ]] && py_ver="3.12"
-    "$ROOT_DIR/scripts/package_x86.sh" -v "${VERSION:-1.0.0}" -d "$DEVICE" --python-ver "$py_ver"
+    "$ROOT_DIR/scripts/package_x86.sh" -v "${VERSION:-1.0.0}" -d "$DEVICE" --ros-distro "$ROS2_DISTRO" --python-ver "$py_ver"
     echo ""
     echo "[INFO] Building service packages..."
-    "$ROOT_DIR/scripts/package_services.sh" --arch x86_64 --version "${VERSION:-1.0.0}" --python-ver "$py_ver"
-    local svc_dir="$ROOT_DIR/output/x86_64/services"
+    "$ROOT_DIR/scripts/package_services.sh" --arch x86_64 --version "${VERSION:-1.0.0}" --python-ver "$py_ver" --ros-distro "$ROS2_DISTRO"
+    local svc_dir="$ROOT_DIR/output/${ROS2_DISTRO}/x86_64/services"
     for svc in "$svc_dir"/*.tar.gz; do
       [[ -f "$svc" ]] && echo "[OK] $(basename "$svc") ($(du -sh "$svc" | cut -f1))"
     done

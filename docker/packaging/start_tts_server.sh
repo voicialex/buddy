@@ -12,8 +12,10 @@ MODEL_DIR="$BUDDY_DIR/models/ChatTTS"
 TTS_SCRIPT="$SERVICE_DIR/server.py"
 REQUIREMENTS="$SERVICE_DIR/requirements.txt"
 
-LOG_FILE="/tmp/chattts.log"
-PID_FILE="/tmp/chattts.pid"
+LOG_DIR="${BUDDY_LOG_DIR:-/tmp/buddy}"
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+LOG_FILE="$LOG_DIR/chattts.log"
+PID_FILE="$LOG_DIR/chattts.pid"
 TTS_CHECK_URL="http://127.0.0.1:9880/docs"
 PORT=9880
 

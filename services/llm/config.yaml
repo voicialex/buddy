@@ -10,8 +10,7 @@ rules: |
   语气亲切自然，适合语音朗读。
 
 local:
-  # 切换本地推理后端：ollama | vllm | rk_llm | auto（重启 LLM service 生效）
-  # auto: arm64+aarch64 且 BUDDY_TARGET_DEVICE=npu 时优先 rk_llm，否则回退 ollama
+  # 切换本地推理后端：ollama | vllm | rk_llm（重启 LLM service 生效）
   active_backend: "rk_llm"
 
   routing_prompt: |

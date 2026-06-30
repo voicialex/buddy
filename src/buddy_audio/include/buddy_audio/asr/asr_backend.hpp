@@ -45,7 +45,7 @@ inline std::unique_ptr<AsrBackend> create_asr_backend(
     (void)engine;   // only used when HAS_RKNN is enabled
     if (mode == "server") return create_server_asr_backend();
 #if HAS_RKNN
-    if (engine == "native" || engine == "zipformer-rknn") return create_native_asr_backend();
+    if (engine == "zipformer-rknn") return create_native_asr_backend();
 #endif
     return create_sherpa_asr_backend();
 }

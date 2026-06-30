@@ -1,13 +1,12 @@
 audio:
   ros__parameters:
     # TTS: mode = "local" | "server"
-    #      engine = "auto" | "sherpa-onnx" | "melo-rknn" | "moss-onnx"
-    #      alias: "native" (compat) -> melo-rknn (when runtime=rknnruntime) or moss-onnx
-    #      runtime = "auto" | "onnxruntime" | "rknnruntime"
+    #      engine = "sherpa-onnx" | "melo-rknn" | "moss-onnx"
+    #      runtime = "onnxruntime" | "rknnruntime"
     tts:
       mode: "local"
-      engine: "auto"
-      runtime: "auto"
+      engine: "sherpa-onnx"
+      runtime: "onnxruntime"
       server:
         chattts:
           url: "http://127.0.0.1:9880/tts"

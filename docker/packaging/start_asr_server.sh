@@ -12,8 +12,10 @@ ONLINE_MODEL="$BUDDY_DIR/models/funasr-paraformer-zh-online"
 VAD_MODEL="$BUDDY_DIR/models/funasr-vad"
 ONNXRT_LIB="$BUDDY_DIR/lib/funasr"
 
-LOG_FILE="/tmp/funasr-server.log"
-PID_FILE="/tmp/funasr-server.pid"
+LOG_DIR="${BUDDY_LOG_DIR:-/tmp/buddy}"
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+LOG_FILE="$LOG_DIR/funasr.log"
+PID_FILE="$LOG_DIR/funasr.pid"
 PORT=10095
 NUM_THREADS=4
 

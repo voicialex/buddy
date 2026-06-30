@@ -68,8 +68,8 @@ tts_runtime_cfg="unknown"
 inference_mode="unknown"
 inference_backend="unknown"
 vision_enabled="true"
-vision_engine_cfg="auto"
-vision_runtime_cfg="auto"
+vision_engine_cfg="unknown"
+vision_runtime_cfg="unknown"
 
 if [[ -f "$AUDIO_ASR_YAML" ]]; then
     asr_mode="$(grep -A2 "^    asr:" "$AUDIO_ASR_YAML" | grep "mode:" | head -1 | awk '{print $2}' | tr -d '"' || echo "unknown")"
@@ -92,8 +92,8 @@ if [[ -f "$MODULES_YAML" ]]; then
 fi
 
 if [[ -f "$VISION_YAML" ]]; then
-    vision_engine_cfg="$(grep -A8 "^vision:" "$VISION_YAML" | grep "engine:" | head -1 | awk '{print $2}' | tr -d '"' || echo "auto")"
-    vision_runtime_cfg="$(grep -A8 "^vision:" "$VISION_YAML" | grep "runtime:" | head -1 | awk '{print $2}' | tr -d '"' || echo "auto")"
+    vision_engine_cfg="$(grep -A8 "^vision:" "$VISION_YAML" | grep "engine:" | head -1 | awk '{print $2}' | tr -d '"' || echo "unknown")"
+    vision_runtime_cfg="$(grep -A8 "^vision:" "$VISION_YAML" | grep "runtime:" | head -1 | awk '{print $2}' | tr -d '"' || echo "unknown")"
 fi
 
 resolve_local_backend_mode() {
@@ -104,36 +104,10 @@ resolve_local_backend_mode() {
         return 0
     fi
 
-    requested="ollama"
     if [[ -f "$LLM_CONFIG" ]]; then
         requested="$(grep -E '^[[:space:]]*active_backend:' "$LLM_CONFIG" | head -1 | awk -F: '{print $2}' | tr -d ' "' || true)"
-        [[ -z "$requested" ]] && requested="ollama"
     fi
-
-    if [[ "$requested" != "auto" ]]; then
-        echo "$requested"
-        return 0
-    fi
-
-    local arch="${BUDDY_TARGET_ARCH:-}"
-    local device="${BUDDY_TARGET_DEVICE:-}"
-    arch="$(echo "$arch" | tr '[:upper:]' '[:lower:]')"
-    device="$(echo "$device" | tr '[:upper:]' '[:lower:]')"
-    if [[ "$arch" =~ ^(arm64|aarch64)$ ]] && [[ "$device" == "npu" ]]; then
-        echo "rk_llm"
-    else
-        echo "ollama"
-    fi
-}
-
-has_rknn_runtime() {
-    if [[ -f "$BASE_DIR/lib/librknnrt.so" ]]; then
-        return 0
-    fi
-    if command -v ldconfig >/dev/null 2>&1 && ldconfig -p 2>/dev/null | grep -q "librknnrt.so"; then
-        return 0
-    fi
-    return 1
+    echo "${requested:-ollama}"
 }
 
 resolve_asr_runtime() {
@@ -142,15 +116,7 @@ resolve_asr_runtime() {
         echo "server"
         return 0
     fi
-    if [[ "$runtime" == "auto" ]]; then
-        if has_rknn_runtime; then
-            echo "rknnruntime"
-        else
-            echo "onnxruntime"
-        fi
-    else
-        echo "$runtime"
-    fi
+    echo "$runtime"
 }
 
 resolve_asr_engine() {
@@ -160,15 +126,7 @@ resolve_asr_engine() {
         echo "server"
         return 0
     fi
-    if [[ "$engine" == "auto" ]]; then
-        if [[ "$runtime" == "rknnruntime" ]]; then
-            echo "native"
-        else
-            echo "sherpa-onnx"
-        fi
-    else
-        echo "$engine"
-    fi
+    echo "$engine"
 }
 
 resolve_tts_runtime() {
@@ -177,11 +135,7 @@ resolve_tts_runtime() {
         echo "server"
         return 0
     fi
-    if [[ "$runtime" == "auto" ]]; then
-        echo "onnxruntime"
-    else
-        echo "$runtime"
-    fi
+    echo "$runtime"
 }
 
 resolve_tts_engine() {
@@ -191,15 +145,7 @@ resolve_tts_engine() {
         echo "server"
         return 0
     fi
-    if [[ "$engine" == "auto" ]]; then
-        if [[ "$runtime" == "rknnruntime" ]]; then
-            echo "native"
-        else
-            echo "sherpa-onnx"
-        fi
-    else
-        echo "$engine"
-    fi
+    echo "$engine"
 }
 
 resolve_rkllm_url() {
@@ -290,15 +236,7 @@ resolve_vision_runtime() {
         echo "disabled"
         return 0
     fi
-    if [[ "$runtime" == "auto" ]]; then
-        if has_rknn_runtime; then
-            echo "rknnruntime"
-        else
-            echo "onnxruntime"
-        fi
-    else
-        echo "$runtime"
-    fi
+    echo "$runtime"
 }
 
 vision_runtime="$(resolve_vision_runtime)"

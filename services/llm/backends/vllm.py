@@ -17,11 +17,13 @@ class VLLMBackend(LLMBackend):
         model: str = "Qwen/Qwen3-4B",
         api_key: str = "EMPTY",
         enable_thinking: bool | None = None,
+        request_timeout_sec: float = 120.0,
     ):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key
         self.enable_thinking = enable_thinking
+        self.request_timeout_sec = max(10.0, float(request_timeout_sec))
 
     def _build_request_body(
         self, messages: list[dict], system_prompt: str, stream: bool
@@ -55,7 +57,7 @@ class VLLMBackend(LLMBackend):
         image_base64: str = "",
     ) -> AsyncIterator[str]:
         body = self._build_request_body(messages, system_prompt, stream=True)
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=self.request_timeout_sec) as client:
             async with client.stream(
                 "POST",
                 f"{self.base_url}/v1/chat/completions",
@@ -69,7 +71,10 @@ class VLLMBackend(LLMBackend):
                     data_str = line[6:]
                     if data_str.strip() == "[DONE]":
                         break
-                    data = json.loads(data_str)
+                    try:
+                        data = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
                     delta = data["choices"][0].get("delta", {}) if data.get("choices") else {}
                     content = delta.get("content", "")
                     if content:
@@ -81,7 +86,7 @@ class VLLMBackend(LLMBackend):
         system_prompt: str = "",
     ) -> str:
         body = self._build_request_body(messages, system_prompt, stream=False)
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=self.request_timeout_sec) as client:
             resp = await client.post(
                 f"{self.base_url}/v1/chat/completions",
                 json=body,

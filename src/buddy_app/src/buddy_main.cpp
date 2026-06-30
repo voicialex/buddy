@@ -194,6 +194,7 @@ int main(int argc, char** argv) {
 
         // Create NodeFactory → NodeInstanceWrapper
         auto factory = loader->createInstance<rclcpp_components::NodeFactory>(entry.factory_cls);
+        loaders.push_back(std::move(loader));  // keep loader alive as long as the node
         auto wrapper = factory->create_node_instance(opts);
         executor.add_node(wrapper.get_node_base_interface());
 
@@ -207,7 +208,6 @@ int main(int argc, char** argv) {
         }
 
         wrappers.push_back(std::move(wrapper));
-        loaders.push_back(std::move(loader));
     }
 
     // Lifecycle: configure → activate
@@ -252,7 +252,7 @@ int main(int argc, char** argv) {
             }
         }
     } catch (const std::exception& e) {
-        RCLCPP_WARN(logger, "Failed to read audio params for KWS banner: %s", e.what());
+        RCLCPP_WARN(logger, "Failed to read audio params for KWS banner: %s (banner may be incorrect)", e.what());
     }
 
     if (kws_enabled) {

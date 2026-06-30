@@ -283,6 +283,10 @@ std::string EmotionRecognizer::Predict(const cv::Mat& image, const std::array<cv
     }
 
     const std::vector<float> probs = Softmax(outputs[0].data);
+    if (probs.size() != kEmotionLabels.size()) {
+        confidence = 0.0f;
+        return "Unknown";
+    }
     const auto best = std::max_element(probs.begin(), probs.end());
     const size_t best_index = static_cast<size_t>(std::distance(probs.begin(), best));
 
@@ -305,7 +309,7 @@ bool FaceEmotionModel::load(const std::string& model_dir) {
     bool use_rknn = false;
 
 #if HAS_RKNN
-    if (runtime_ == "rknnruntime" || runtime_ == "auto") {
+    if (runtime_ == "rknnruntime") {
         const fs::path rknn_det = fs::path(model_dir) / "retinaface_mnet_v2_fp16.rknn";
         const fs::path rknn_emo = fs::path(model_dir) / "affecnet7_fp16.rknn";
         if (fs::exists(rknn_det) && fs::exists(rknn_emo)) {

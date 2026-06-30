@@ -60,9 +60,9 @@ std::unique_ptr<TtsBackend> create_melo_rknn_tts_backend();
 inline std::unique_ptr<TtsBackend> create_tts_backend(
     const std::string& mode, const std::string& engine, const std::string& runtime = "onnxruntime") {
     if (mode == "server") return create_http_tts_backend();
-    if (engine == "melo-rknn" || (engine == "native" && runtime == "rknnruntime")) {
+    if (engine == "melo-rknn") {
         return create_melo_rknn_tts_backend();
     }
-    if (engine == "native" || engine == "moss" || engine == "moss-onnx") return create_moss_tts_backend();
+    if (engine == "moss" || engine == "moss-onnx") return create_moss_tts_backend();
     return create_sherpa_tts_backend();
 }

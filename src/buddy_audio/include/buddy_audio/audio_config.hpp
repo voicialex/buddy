@@ -22,15 +22,15 @@ struct AudioConfig {
     KwsConfig kws{};
 
     std::string asr_mode = "local";
-    std::string asr_engine = "auto";
-    std::string asr_runtime = "auto";
+    std::string asr_engine = "sherpa-onnx";
+    std::string asr_runtime = "onnxruntime";
     AsrBackendConfig asr_local_native{};
     AsrBackendConfig asr_local_sherpa{};
     AsrBackendConfig asr_server{};
 
     std::string tts_mode = "local";
-    std::string tts_engine = "auto";
-    std::string tts_runtime = "auto";
+    std::string tts_engine = "sherpa-onnx";
+    std::string tts_runtime = "onnxruntime";
     TtsBackendConfig tts_local_sherpa{};
     TtsBackendConfig tts_local_melo{};
     TtsBackendConfig tts_local_moss{};

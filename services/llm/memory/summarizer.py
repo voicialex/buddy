@@ -1,6 +1,7 @@
 """Summarizer — calls cloud LLM for summarization and fact extraction."""
 import json
 import logging
+import re
 from datetime import datetime, timezone
 
 from backends.base import LLMBackend
@@ -9,18 +10,39 @@ from .prompts import SUMMARIZE_PROMPT, EXTRACT_FACTS_PROMPT, DEDUPE_FACTS_PROMPT
 
 logger = logging.getLogger("llm_server")
 
+# LLM often wraps JSON in ```json ... ``` fences
+_JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\[.*?\])\s*```", re.DOTALL)
+
+
+def _extract_json_array(text: str) -> list:
+    """Try to extract a JSON array from LLM output, tolerating markdown fences."""
+    m = _JSON_BLOCK_RE.search(text)
+    return json.loads(m.group(1) if m else text.strip())
+
 
 class Summarizer:
-    """Calls cloud LLM to summarize conversations and extract facts."""
+    """Calls cloud LLM to summarize conversations and extract facts.
 
-    def __init__(self, cloud_backend: LLMBackend):
+    Falls back to local_backend when cloud is unavailable (local-only devices).
+    """
+
+    def __init__(self, cloud_backend: LLMBackend | None, local_backend: LLMBackend | None = None):
         self.cloud = cloud_backend
+        self.local = local_backend
+
+    def _pick_backend(self) -> LLMBackend | None:
+        """Prefer cloud; fall back to local for local-only deployments."""
+        return self.cloud or self.local
 
     async def summarize(self, messages: list[dict]) -> str:
+        backend = self._pick_backend()
+        if backend is None:
+            logger.warning("[MEMORY] summarize skipped: no backend available")
+            return ""
         conversation = self._format_conversation(messages)
         prompt = SUMMARIZE_PROMPT.format(conversation=conversation)
         try:
-            result = await self.cloud.complete(
+            result = await backend.complete(
                 messages=[{"role": "user", "content": prompt}]
             )
             return result.strip()
@@ -31,6 +53,10 @@ class Summarizer:
     async def extract_facts(
         self, messages: list[dict], existing_facts: list[Fact]
     ) -> list[Fact]:
+        backend = self._pick_backend()
+        if backend is None:
+            logger.warning("[MEMORY] extract_facts skipped: no backend available")
+            return []
         conversation = self._format_conversation(messages)
         existing_str = json.dumps(
             [{"content": f.content, "category": f.category} for f in existing_facts],
@@ -41,10 +67,10 @@ class Summarizer:
             conversation=conversation, existing_facts=existing_str
         )
         try:
-            result = await self.cloud.complete(
+            result = await backend.complete(
                 messages=[{"role": "user", "content": prompt}]
             )
-            items = json.loads(result.strip())
+            items = _extract_json_array(result.strip())
             if not isinstance(items, list):
                 return []
             now = datetime.now(timezone.utc).isoformat()
@@ -59,8 +85,11 @@ class Summarizer:
                 for item in items
                 if isinstance(item, dict) and "content" in item
             ]
-        except (json.JSONDecodeError, Exception) as e:
-            logger.warning(f"[MEMORY] extract_facts failed: {e}")
+        except json.JSONDecodeError as e:
+            logger.warning(f"[MEMORY] extract_facts JSON parse failed: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"[MEMORY] extract_facts failed: {e}")
             return []
 
     async def dedupe_facts(
@@ -68,6 +97,10 @@ class Summarizer:
     ) -> list[Fact]:
         if not new_facts:
             return old_facts
+        backend = self._pick_backend()
+        if backend is None:
+            logger.warning("[MEMORY] dedupe_facts skipped: no backend available")
+            return old_facts + new_facts
 
         old_str = json.dumps(
             [{"content": f.content, "category": f.category} for f in old_facts],
@@ -80,10 +113,10 @@ class Summarizer:
 
         prompt = DEDUPE_FACTS_PROMPT.format(old_facts=old_str, new_facts=new_str)
         try:
-            result = await self.cloud.complete(
+            result = await backend.complete(
                 messages=[{"role": "user", "content": prompt}]
             )
-            items = json.loads(result.strip())
+            items = _extract_json_array(result.strip())
             if not isinstance(items, list):
                 return old_facts + new_facts
             now = datetime.now(timezone.utc).isoformat()
@@ -98,6 +131,9 @@ class Summarizer:
                 for item in items
                 if isinstance(item, dict) and "content" in item
             ]
+        except json.JSONDecodeError as e:
+            logger.warning(f"[MEMORY] dedupe_facts JSON parse failed: {e}")
+            return old_facts + new_facts
         except Exception as e:
             logger.warning(f"[MEMORY] dedupe_facts failed: {e}")
             return old_facts + new_facts

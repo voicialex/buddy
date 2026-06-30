@@ -1,6 +1,7 @@
 import os
 from typing import AsyncIterator
 
+import httpx
 from openai import AsyncOpenAI
 
 from .base import LLMBackend
@@ -13,11 +14,13 @@ class OpenAICompatBackend(LLMBackend):
         model: str,
         api_key: str = "",
         api_key_env: str = "",
+        request_timeout_sec: float = 120.0,
     ):
         key = api_key or os.environ.get(api_key_env, "")
         if not key:
             raise ValueError(f"No API key: set {api_key_env} env or provide api_key")
-        self.client = AsyncOpenAI(base_url=base_url, api_key=key)
+        timeout = httpx.Timeout(connect=5.0, read=float(request_timeout_sec), write=10.0, pool=5.0)
+        self.client = AsyncOpenAI(base_url=base_url, api_key=key, timeout=timeout)
         self.model = model
 
     async def stream_chat(

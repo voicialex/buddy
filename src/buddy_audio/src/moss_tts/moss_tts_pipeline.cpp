@@ -316,12 +316,18 @@ struct WavData {
 uint16_t read_u16(std::istream& input) {
     uint8_t bytes[2];
     input.read(reinterpret_cast<char*>(bytes), 2);
+    if (input.gcount() != 2) {
+        throw std::runtime_error("Unexpected end of file reading uint16.");
+    }
     return static_cast<uint16_t>(bytes[0] | (static_cast<uint16_t>(bytes[1]) << 8));
 }
 
 uint32_t read_u32(std::istream& input) {
     uint8_t bytes[4];
     input.read(reinterpret_cast<char*>(bytes), 4);
+    if (input.gcount() != 4) {
+        throw std::runtime_error("Unexpected end of file reading uint32.");
+    }
     return static_cast<uint32_t>(bytes[0] | (static_cast<uint32_t>(bytes[1]) << 8) |
                                  (static_cast<uint32_t>(bytes[2]) << 16) | (static_cast<uint32_t>(bytes[3]) << 24));
 }
@@ -800,6 +806,9 @@ struct MossTtsPipeline::Impl {
             {"audio_codes", "audio_code_lengths"});
         const int code_length = tensor_scalar_int(outputs.at("audio_code_lengths"));
         const std::vector<int32_t> flat_codes = tensor_to_i32(outputs.at("audio_codes"));
+        if (static_cast<int>(flat_codes.size()) < code_length * codec_meta.num_quantizers) {
+            throw std::runtime_error("audio_codes tensor is smaller than expected.");
+        }
         std::vector<std::vector<int32_t>> prompt_codes;
         prompt_codes.reserve(static_cast<size_t>(code_length));
         for (int frame = 0; frame < code_length; ++frame) {
@@ -826,7 +835,7 @@ struct MossTtsPipeline::Impl {
     }
 
     std::vector<float> run_generation(const GenerateParams& params) {
-        const auto start_time = std::chrono::high_resolution_clock::now();
+        const auto start_time = std::chrono::steady_clock::now();
         const std::vector<int32_t> text_token_ids = tokenizer.encode(params.text);
         if (text_token_ids.empty()) {
             throw std::runtime_error("Tokenizer produced no tokens for input text.");
@@ -929,7 +938,7 @@ struct MossTtsPipeline::Impl {
 
         if (generated_frames.empty()) {
             last_inference_seconds =
-                std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_time).count();
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count();
             return {};
         }
 
@@ -950,7 +959,7 @@ struct MossTtsPipeline::Impl {
 
         const int audio_length = tensor_scalar_int(codec_outputs.at("audio_lengths"));
         last_inference_seconds =
-            std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_time).count();
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count();
         return channel_major_to_interleaved(codec_outputs.at("audio"), audio_length);
     }
 };

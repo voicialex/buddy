@@ -1,80 +1,6 @@
 #include "buddy_audio/engine_factory.hpp"
 
-#include <dlfcn.h>
 #include <exception>
-
-namespace {
-
-std::string resolve_asr_runtime(const std::string& requested, rclcpp::Logger logger) {
-    if (requested != "auto") {
-        return requested;
-    }
-#ifdef HAS_RKNN
-    void* rknn_handle = dlopen("librknnrt.so", RTLD_LAZY | RTLD_NOLOAD);
-    if (!rknn_handle) {
-        rknn_handle = dlopen("librknnrt.so", RTLD_LAZY);
-    }
-    if (rknn_handle) {
-        dlclose(rknn_handle);
-        RCLCPP_INFO(logger, "RKNN runtime detected, using NPU for ASR");
-        return "rknnruntime";
-    }
-#endif
-    (void)logger;
-    return "onnxruntime";
-}
-
-std::string resolve_tts_runtime(const std::string& requested, const std::string& engine) {
-    if (requested != "auto") {
-        return requested;
-    }
-#ifdef HAS_RKNN
-    if (engine == "native" || engine == "melo-rknn") {
-        void* rknn_handle = dlopen("librknnrt.so", RTLD_LAZY | RTLD_NOLOAD);
-        if (!rknn_handle) {
-            rknn_handle = dlopen("librknnrt.so", RTLD_LAZY);
-        }
-        if (rknn_handle) {
-            dlclose(rknn_handle);
-            return "rknnruntime";
-        }
-    }
-#else
-    (void)engine;
-#endif
-    return "onnxruntime";
-}
-
-std::string normalize_asr_engine(std::string engine, const std::string& runtime) {
-    if (engine == "auto") {
-        return (runtime == "rknnruntime") ? "zipformer-rknn" : "sherpa-onnx";
-    }
-    if (engine == "native") {
-        return "zipformer-rknn";
-    }
-    if (engine == "sherpa") {
-        return "sherpa-onnx";
-    }
-    return engine;
-}
-
-std::string normalize_tts_engine(std::string engine, const std::string& runtime) {
-    if (engine == "auto") {
-        return (runtime == "rknnruntime") ? "melo-rknn" : "sherpa-onnx";
-    }
-    if (engine == "sherpa") {
-        return "sherpa-onnx";
-    }
-    if (engine == "native") {
-        return (runtime == "rknnruntime") ? "melo-rknn" : "moss-onnx";
-    }
-    if (engine == "moss") {
-        return "moss-onnx";
-    }
-    return engine;
-}
-
-}  // namespace
 
 bool create_asr_engine(const AudioConfig& cfg, rclcpp::Logger logger, AsrEngineBundle* out) {
     if (!out) {
@@ -82,8 +8,8 @@ bool create_asr_engine(const AudioConfig& cfg, rclcpp::Logger logger, AsrEngineB
     }
 
     const std::string mode = cfg.asr_mode;
-    const std::string runtime = resolve_asr_runtime(cfg.asr_runtime, logger);
-    const std::string engine = normalize_asr_engine(cfg.asr_engine, runtime);
+    const std::string engine = cfg.asr_engine;
+    const std::string runtime = cfg.asr_runtime;
 
     auto backend = create_asr_backend(mode, engine, runtime);
     if (!backend) {
@@ -159,9 +85,8 @@ bool create_tts_engine(
     }
 
     const std::string mode = cfg.tts_mode;
-    std::string engine = cfg.tts_engine;
-    const std::string runtime = resolve_tts_runtime(cfg.tts_runtime, engine);
-    engine = normalize_tts_engine(engine, runtime);
+    const std::string engine = cfg.tts_engine;
+    const std::string runtime = cfg.tts_runtime;
 
     auto backend = create_tts_backend(mode, engine, runtime);
     if (!backend) {
@@ -171,18 +96,27 @@ bool create_tts_engine(
     TtsBackendConfig config{};
     if (mode == "server") {
         config = cfg.tts_server;
-    } else if (engine == "sherpa-onnx" || engine == "sherpa") {
+    } else if (engine == "sherpa-onnx") {
         config = cfg.tts_local_sherpa;
     } else if (engine == "melo-rknn") {
         config = cfg.tts_local_melo;
-    } else if (engine == "moss-onnx" || engine == "moss" || engine == "native") {
+    } else if (engine == "moss-onnx") {
         config = cfg.tts_local_moss;
     } else {
+        RCLCPP_WARN(logger, "Unknown TTS engine=%s, defaulting to sherpa config", engine.c_str());
         config = cfg.tts_local_sherpa;
     }
     config.runtime = runtime;
 
-    if (!backend->initialize(config, logger)) {
+    bool initialized = false;
+    try {
+        initialized = backend->initialize(config, logger);
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(logger, "TTS initialize exception: %s", e.what());
+        initialized = false;
+    }
+
+    if (!initialized) {
         return false;
     }
 
