@@ -49,8 +49,8 @@ cp "$INSTALL_DIR/buddy_app/lib/buddy_app/buddy_main" "$DEB_ROOT/opt/buddy/bin/"
 find "$INSTALL_DIR" -name "*.so*" -type f -exec cp -n {} "$DEB_ROOT/opt/buddy/lib/" \;
 find "$INSTALL_DIR" -name "*.so*" -type l -exec cp -nL {} "$DEB_ROOT/opt/buddy/lib/" \;
 
-# ─── ROS 2 core libs (structure: ros2_core/<pkg>/lib/*.so*) ───────────────────
-ros2_base="$PREBUILT_DIR/ros2_core"
+# ─── ROS 2 core libs (structure: ros2_core/<distro>/<pkg>/lib/*.so*) ──────────
+ros2_base="$PREBUILT_DIR/ros2_core/$ROS2_DISTRO"
 if [[ -d "$ros2_base" ]]; then
   find "$ros2_base" -path "*/lib/*.so*" -type f -exec cp -n {} "$DEB_ROOT/opt/buddy/lib/" \;
   find "$ros2_base" -path "*/lib/*.so*" -type l -exec cp -nP {} "$DEB_ROOT/opt/buddy/lib/" \;
@@ -75,6 +75,23 @@ fi
 if [[ "$DEVICE" == "gpu" && -d "$PREBUILT_DIR/sentencepiece/lib" ]]; then
   cp -fP "$PREBUILT_DIR/sentencepiece/lib/"*.so* "$DEB_ROOT/opt/buddy/lib/"
 fi
+
+# ─── Strip symbols (deb-only; build output keeps full symbols) ───────────────
+# Strip buddy components + opencv. Third-party (onnxruntime/sherpa/ros2_core)
+# ships already-stripped or has internal layout strip-all would corrupt.
+strip_args=()
+for f in \
+  "$DEB_ROOT/opt/buddy/bin/buddy_main" \
+  "$DEB_ROOT/opt/buddy/lib/libaudio_component.so" \
+  "$DEB_ROOT/opt/buddy/lib/libbrain_component.so" \
+  "$DEB_ROOT/opt/buddy/lib/libvision_component.so" \
+  "$DEB_ROOT/opt/buddy/lib/libllm_bridge_component.so" \
+  "$DEB_ROOT/opt/buddy/lib/libcomponent_manager.so"
+do
+  [[ -f "$f" ]] && strip_args+=("$f")
+done
+[[ ${#strip_args[@]} -gt 0 ]] && find "$DEB_ROOT/opt/buddy/lib/" -maxdepth 1 -name "libopencv_*.so*" -type f -exec strip --strip-all {} + 2>/dev/null || true
+[[ ${#strip_args[@]} -gt 0 ]] && strip --strip-all "${strip_args[@]}" 2>/dev/null || true
 
 # ─── Params ──────────────────────────────────────────────────────────────────
 cp -rL "$INSTALL_DIR/buddy_app/share/buddy_app/params/"* "$DEB_ROOT/opt/buddy/params/" 2>/dev/null || true
@@ -132,6 +149,12 @@ if [[ -d "$ROOT_DIR/services/llm" ]]; then
     "$WHEELS_DIR"/*.whl \
   || echo "[WARN] Some packages install failed"
 
+  # Strip build-time artifacts from venv (saves ~5-10MB)
+  # 保留 dist-info — importlib.metadata.version() 运行时需要查包版本
+  find "$SITE_PACKAGES" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+  find "$SITE_PACKAGES" -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true
+  find "$SITE_PACKAGES" -name "*.pyc" -delete 2>/dev/null || true
+
   # Create activate script
   cat > "$VENV_DIR/bin/activate" <<'ACTIVATE_EOF'
 deactivate () {
@@ -188,6 +211,9 @@ if [[ -d "$ROOT_DIR/docker/rkllm_server" ]]; then
       --platform any \
       --python-version "$PYTHON_VER" --only-binary=:all: \
       --target "$rkllm_site" "$rkllm_wheels"/*.whl || echo "[WARN] rkllm flask install failed"
+    find "$rkllm_site" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+    find "$rkllm_site" -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true
+    find "$rkllm_site" -name "*.pyc" -delete 2>/dev/null || true
     cp "$VENV_DIR/bin/activate" "$rkllm_venv/bin/activate" 2>/dev/null || true
     sha256sum "$DEB_ROOT/opt/buddy/rkllm_server/requirements.txt" | awk '{print $1}' > "$rkllm_venv/.requirements.sha256"
     touch "$rkllm_venv/.prebuilt"

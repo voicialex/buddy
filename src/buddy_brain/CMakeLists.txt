@@ -64,6 +64,7 @@ if(BUILD_TESTING)
   target_compile_features(test_brain_node PUBLIC cxx_std_17)
   ament_target_dependencies(
     test_brain_node
+    ament_index_cpp
     rclcpp
     rclcpp_lifecycle
     rclcpp_components

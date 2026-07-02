@@ -2,6 +2,7 @@ output/
 .git/
 prebuilt/
 !prebuilt/aarch64/
+!prebuilt/x86_64/
 venv-tts/
 services/llm/.venv/
 services/llm/wheels/

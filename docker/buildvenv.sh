@@ -43,8 +43,35 @@ pip install --quiet --upgrade --no-deps \
   --target "$VENV_DIR/lib/python${PYTHON_VER}/site-packages" \
   "$VENV_DIR"/wheels/*.whl
 
-# Generate activate script from template (VENV_DIR computed at runtime)
-cp docker/activate.sh "$VENV_DIR/bin/activate"
+# Generate activate script (inline, no external template needed)
+cat > "$VENV_DIR/bin/activate" <<'ACTIVATE_EOF'
+deactivate () {
+    if [ -n "${_OLD_VIRTUAL_PATH:-}" ] ; then
+        PATH="$_OLD_VIRTUAL_PATH"; export PATH; unset _OLD_VIRTUAL_PATH
+    fi
+    if [ -n "${BASH:-}" -o -n "${ZSH_VERSION:-}" ] ; then hash -r 2>/dev/null; fi
+    if [ -n "${_OLD_VIRTUAL_PS1:-}" ] ; then
+        PS1="$_OLD_VIRTUAL_PS1"; export PS1; unset _OLD_VIRTUAL_PS1
+    fi
+    unset VIRTUAL_ENV
+    unset VIRTUAL_ENV_PROMPT
+    if [ ! "$1" = "nondestructive" ] ; then unset -f deactivate; fi
+}
+deactivate nondestructive
+VIRTUAL_ENV="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+export VIRTUAL_ENV
+_OLD_VIRTUAL_PATH="$PATH"
+PATH="$VIRTUAL_ENV/bin:$PATH"
+export PATH
+if [ -z "${VIRTUAL_ENV_DISABLE_PROMPT:-}" ] ; then
+    _OLD_VIRTUAL_PS1="${PS1:-}"
+    PS1="(.venv) ${PS1:-}"
+    export PS1
+    VIRTUAL_ENV_PROMPT="(.venv) "
+    export VIRTUAL_ENV_PROMPT
+fi
+if [ -n "${BASH:-}" -o -n "${ZSH_VERSION:-}" ] ; then hash -r 2>/dev/null; fi
+ACTIVATE_EOF
 
 # Fix shebangs for cross-arch
 for script in "$VENV_DIR/bin/"*; do
@@ -55,3 +82,10 @@ done
 
 sha256sum "$REQ_FILE" | awk '{print $1}' > "$VENV_DIR/.requirements.sha256"
 touch "$VENV_DIR/.prebuilt"
+
+# Strip build-time artifacts (saves ~5-10MB)
+# 保留 dist-info — importlib.metadata.version() 运行时需要查包版本（如 werkzeug）
+SITE_PKG="$VENV_DIR/lib/python${PYTHON_VER}/site-packages"
+find "$SITE_PKG" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+find "$SITE_PKG" -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true
+find "$SITE_PKG" -name "*.pyc" -delete 2>/dev/null || true

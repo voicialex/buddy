@@ -119,6 +119,12 @@ build_llm_pkg() {
     "$wheels_dir"/*.whl \
     || echo "[WARN] Some packages install failed"
 
+  # Strip build-time artifacts from venv (saves ~5-10MB)
+  # 保留 dist-info — importlib.metadata.version() 运行时需要查包版本
+  find "$site_packages" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+  find "$site_packages" -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true
+  find "$site_packages" -name "*.pyc" -delete 2>/dev/null || true
+
   # Create activate script
   cat > "$venv_dir/bin/activate" <<'ACTIVATE_EOF'
 deactivate () {
@@ -176,6 +182,9 @@ ACTIVATE_EOF
     ln -sf python3 "$rkllm_venv/bin/python"
     pip install --quiet --no-deps "${plat_flags[@]}" --python-version "$PYTHON_VER" --only-binary=:all: \
       --target "$rkllm_site" "$rkllm_wheels"/*.whl || echo "[WARN] rkllm flask install failed"
+    find "$rkllm_site" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+    find "$rkllm_site" -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true
+    find "$rkllm_site" -name "*.pyc" -delete 2>/dev/null || true
     cp "$venv_dir/bin/activate" "$rkllm_venv/bin/activate" 2>/dev/null || true
     sha256sum "$tmp/opt/buddy/rkllm_server/requirements.txt" | awk '{print $1}' > "$rkllm_venv/.requirements.sha256"
     touch "$rkllm_venv/.prebuilt"

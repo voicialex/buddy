@@ -123,7 +123,7 @@ else()
 endif()
 target_include_directories(
   audio_component PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>
-                         ${SHERPA_INCLUDE} ${CURL_INCLUDE_DIRS} ${ORT_INCLUDE}
+                         ${SHERPA_INCLUDE} ${ORT_INCLUDE}
 )
 target_compile_features(audio_component PUBLIC cxx_std_17)
 ament_target_dependencies(
@@ -139,7 +139,7 @@ target_link_libraries(
   ${SHERPA_LIB}
   ${ORT_LIB}
   ALSA::ALSA
-  ${CURL_LIBRARIES}
+  CURL::libcurl
   Boost::boost
 )
 if(WEBRTC_APM_FOUND)
@@ -180,7 +180,6 @@ if(BUILD_TESTING)
   )
   target_include_directories(
     test_audio_node PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> ${SHERPA_INCLUDE}
-                           ${CURL_INCLUDE_DIRS}
   )
   target_compile_features(test_audio_node PUBLIC cxx_std_17)
   ament_target_dependencies(
@@ -194,7 +193,7 @@ if(BUILD_TESTING)
     test_audio_node
     ${SHERPA_LIB}
     ALSA::ALSA
-    ${CURL_LIBRARIES}
+    CURL::libcurl
     Boost::boost
   )
   if(WEBRTC_APM_FOUND)

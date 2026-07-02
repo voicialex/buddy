@@ -15,8 +15,7 @@ target_include_directories(
   $<INSTALL_INTERFACE:include>
 )
 target_compile_features(buddy_common PUBLIC cxx_std_17)
-target_link_libraries(buddy_common ${CURL_LIBRARIES})
-target_include_directories(buddy_common PRIVATE ${CURL_INCLUDE_DIRS})
+target_link_libraries(buddy_common CURL::libcurl)
 
 install(
   TARGETS buddy_common

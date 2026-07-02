@@ -176,6 +176,11 @@ resolve_rkllm_server_cmd() {
     fi
 
     local model_path="${BUDDY_RKLLM_MODEL_PATH:-}"
+    # Relative path → resolve against $PROJECT_DIR (so the same buddy.env
+    # works whether deployed to /opt/buddy or ~/out/opt/buddy).
+    if [[ -n "$model_path" && "$model_path" != /* ]]; then
+        model_path="$PROJECT_DIR/$model_path"
+    fi
     if [[ -z "$model_path" && -d "$PROJECT_DIR/models/rkllm" ]]; then
         model_path="$(find "$PROJECT_DIR/models/rkllm" -type f -name '*.rkllm' 2>/dev/null | head -1 || true)"
     fi

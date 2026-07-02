@@ -60,7 +60,7 @@ COPY prebuilt/ /opt/prebuilt-src/
 
 RUN PREBUILT_DIR="$(cat /tmp/prebuilt_dir)" && \
     mkdir -p /opt/prebuilt && \
-    cp -a /opt/prebuilt-src/${PREBUILT_DIR}/ros2_core /opt/ros2_core && \
+    cp -a /opt/prebuilt-src/${PREBUILT_DIR}/ros2_core/humble /opt/ros2_core && \
     for dep in sherpa-onnx onnxruntime opencv libcurl; do \
       cp -a /opt/prebuilt-src/${PREBUILT_DIR}/$dep /opt/prebuilt/$dep; \
     done && \
@@ -127,7 +127,7 @@ COPY prebuilt/ /opt/prebuilt-src/
 
 RUN PREBUILT_DIR="$(cat /tmp/prebuilt_dir)" && \
     mkdir -p /opt/prebuilt && \
-    cp -a /opt/prebuilt-src/${PREBUILT_DIR}/ros2_core /opt/ros2_core && \
+    cp -a /opt/prebuilt-src/${PREBUILT_DIR}/ros2_core/jazzy /opt/ros2_core && \
     for dep in sherpa-onnx onnxruntime opencv libcurl; do \
       cp -a /opt/prebuilt-src/${PREBUILT_DIR}/$dep /opt/prebuilt/$dep; \
     done && \
@@ -231,7 +231,16 @@ RUN cp /tmp/install/buddy_app/lib/buddy_app/buddy_main opt/buddy/bin/ && \
     fi && \
     if [ "$DEVICE" = "npu" ] && [ "$TARGET_ARCH" = "arm64" ]; then \
       cp -fP /tmp/prebuilt/rknn/lib/*.so* opt/buddy/lib/ 2>/dev/null || true; \
-    fi
+    fi && \
+    STRIP=strip && \
+    if [ "$TARGET_ARCH" = "arm64" ]; then STRIP=aarch64-linux-gnu-strip; fi && \
+    "$STRIP" --strip-all opt/buddy/bin/buddy_main \
+      opt/buddy/lib/libaudio_component.so \
+      opt/buddy/lib/libbrain_component.so \
+      opt/buddy/lib/libvision_component.so \
+      opt/buddy/lib/libllm_bridge_component.so \
+      opt/buddy/lib/libcomponent_manager.so 2>/dev/null || true && \
+    find opt/buddy/lib -maxdepth 1 -name "libopencv_*.so*" -type f -exec "$STRIP" --strip-all {} + 2>/dev/null || true
 
 COPY --from=humble-build /workspace/output/install/buddy_app/share/buddy_app/params/ opt/buddy/params/
 
@@ -239,7 +248,12 @@ RUN mkdir -p opt/buddy/share && \
     cp -a /tmp/ros2_share/. opt/buddy/share/ && \
     for d in /tmp/install/*/share; do \
       if [ -d "$d" ]; then cp -a "$d"/. opt/buddy/share/; fi; \
-    done
+    done && \
+    find opt/buddy/share -type d \( -name cmake -o -name hook -o -name environment -o -name resource \) -prune -exec rm -rf {} + && \
+    rm -rf opt/buddy/share/ament_cmake* opt/buddy/share/colcon-core && \
+    find opt/buddy/share -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find opt/buddy/share -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find opt/buddy/share \( -name "*.zsh" -o -name "*.ps1" -o -name "*.idl" \) -delete 2>/dev/null || true
 
 COPY --from=humble-build /opt/ros2_core/local/lib/python3.10/ /tmp/ros2_local_python/
 RUN cp /tmp/ros2_bin/ros2 opt/buddy/bin/_ros2_entry && \
@@ -248,6 +262,8 @@ RUN cp /tmp/ros2_bin/ros2 opt/buddy/bin/_ros2_entry && \
     mkdir -p opt/buddy/lib/python3.10 && \
     cp -a /tmp/ros2_python/. opt/buddy/lib/python3.10/ && \
     cp -a /tmp/ros2_local_python/. opt/buddy/lib/python3.10/ && \
+    find opt/buddy/lib/python3.10 -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
+    # 保留 egg-info — ros2cli 通过 importlib.metadata.entry_points() 加载子命令（topic/node/...）
     if [ "$TARGET_ARCH" = "arm64" ]; then \
       find opt/buddy/lib/python3.10/ -name "*x86_64-linux-gnu*" -exec rename 's/x86_64-linux-gnu/aarch64-linux-gnu/' {} + 2>/dev/null || \
       find opt/buddy/lib/python3.10/ -name "*x86_64-linux-gnu*" | while read f; do mv "$f" "$(echo "$f" | sed 's/x86_64-linux-gnu/aarch64-linux-gnu/')"; done; \
@@ -264,11 +280,12 @@ COPY docker/packaging/postrm DEBIAN/postrm
 COPY scripts/common.sh opt/buddy/scripts/common.sh
 COPY scripts/status.sh opt/buddy/scripts/status.sh
 COPY scripts/start_llm_server.sh opt/buddy/scripts/start_llm_server.sh
+COPY scripts/npu_monitor.sh opt/buddy/scripts/npu_monitor.sh
+COPY scripts/switch_runtime.sh opt/buddy/scripts/switch_runtime.sh
 COPY services/llm/ opt/buddy/services/llm/
 
-COPY docker/buildvenv.sh docker/buildvenv.sh
-COPY docker/activate.sh docker/activate.sh
-RUN BUDDY_PYTHON_VER=3.10 bash docker/buildvenv.sh && rm docker/buildvenv.sh docker/activate.sh
+COPY docker/buildvenv.sh /tmp/buildvenv.sh
+RUN BUDDY_PYTHON_VER=3.10 bash /tmp/buildvenv.sh && rm /tmp/buildvenv.sh
 
 COPY docker/rkllm_server/ /tmp/rkllm_server/
 RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
@@ -278,11 +295,13 @@ RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
     fi && \
     rm -rf /tmp/rkllm_server \
            opt/buddy/services/llm/tests \
-           opt/buddy/services/llm/__pycache__ \
-           opt/buddy/services/llm/backends/__pycache__ \
            opt/buddy/rkllm_server/__pycache__ && \
+    find opt/buddy/services/llm -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true && \
     python3.10 -m venv opt/buddy/rkllm_server/.venv && \
     opt/buddy/rkllm_server/.venv/bin/pip install --no-cache-dir -r opt/buddy/rkllm_server/requirements.txt && \
+    find opt/buddy/rkllm_server/.venv -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
+    find opt/buddy/rkllm_server/.venv -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find opt/buddy/rkllm_server/.venv -name "*.pyc" -delete 2>/dev/null || true && \
     sha256sum opt/buddy/rkllm_server/requirements.txt | awk '{print $1}' > opt/buddy/rkllm_server/.venv/.requirements.sha256 && \
     touch opt/buddy/rkllm_server/.venv/.prebuilt && \
     if [ "$TARGET_ARCH" = "arm64" ]; then \
@@ -293,9 +312,9 @@ RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
               opt/buddy/scripts/common.sh \
               opt/buddy/scripts/status.sh \
               opt/buddy/scripts/start_llm_server.sh \
+              opt/buddy/scripts/switch_runtime.sh \
               DEBIAN/postinst DEBIAN/prerm DEBIAN/postrm && \
     sed -i "s/__VERSION__/${VERSION}/" DEBIAN/control && \
-    echo "BUDDY_TARGET_ARCH=${TARGET_ARCH}" >> opt/buddy/etc/buddy.env && \
     echo "BUDDY_TARGET_DEVICE=${DEVICE}" >> opt/buddy/etc/buddy.env && \
     echo "BUDDY_ROS2_DISTRO=humble" >> opt/buddy/etc/buddy.env
 
@@ -314,17 +333,16 @@ ARG VERSION
 ARG DEVICE
 
 WORKDIR /models-root
+COPY scripts/models_manifest.sh /tmp/models_manifest.sh
 COPY models/ .
 
-RUN rm -rf ollama/ && \
+RUN set -e && \
+    ARCH=$([ "$TARGET_ARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
     rm -f *.tar* 2>/dev/null || true && \
-    if [ "$DEVICE" != "npu" ]; then \
-      echo "[INFO] Excluding RKNN models"; \
-      rm -rf zipformer-rknn/ melo-tts-rknn/ rkllm/; \
-    else \
-      echo "[INFO] Excluding server-only models for npu package"; \
-      rm -rf funasr-paraformer-zh-offline/ funasr-paraformer-zh-online/ funasr-vad/ ChatTTS/; \
-    fi && \
+    . /tmp/models_manifest.sh && \
+    excludes="$(models_exclude_for_device "$DEVICE" "$ARCH")" && \
+    echo "[INFO] Packaging models for device=$DEVICE arch=$ARCH" && \
+    for d in $excludes; do [ -e "$d" ] && { rm -rf "$d"; echo "[INFO] Excluded: $d"; }; done || true && \
     mkdir -p /output && tar czf /output/buddy-models_${VERSION}_${DEVICE}.tar.gz -C /models-root .
 
 # --- Humble Exports ---
@@ -429,7 +447,16 @@ RUN cp /tmp/install/buddy_app/lib/buddy_app/buddy_main opt/buddy/bin/ && \
     fi && \
     if [ "$DEVICE" = "npu" ] && [ "$TARGET_ARCH" = "arm64" ]; then \
       cp -fP /tmp/prebuilt/rknn/lib/*.so* opt/buddy/lib/ 2>/dev/null || true; \
-    fi
+    fi && \
+    STRIP=strip && \
+    if [ "$TARGET_ARCH" = "arm64" ]; then STRIP=aarch64-linux-gnu-strip; fi && \
+    "$STRIP" --strip-all opt/buddy/bin/buddy_main \
+      opt/buddy/lib/libaudio_component.so \
+      opt/buddy/lib/libbrain_component.so \
+      opt/buddy/lib/libvision_component.so \
+      opt/buddy/lib/libllm_bridge_component.so \
+      opt/buddy/lib/libcomponent_manager.so 2>/dev/null || true && \
+    find opt/buddy/lib -maxdepth 1 -name "libopencv_*.so*" -type f -exec "$STRIP" --strip-all {} + 2>/dev/null || true
 
 COPY --from=jazzy-build /workspace/output/install/buddy_app/share/buddy_app/params/ opt/buddy/params/
 
@@ -437,7 +464,12 @@ RUN mkdir -p opt/buddy/share && \
     cp -a /tmp/ros2_share/. opt/buddy/share/ && \
     for d in /tmp/install/*/share; do \
       if [ -d "$d" ]; then cp -a "$d"/. opt/buddy/share/; fi; \
-    done
+    done && \
+    find opt/buddy/share -type d \( -name cmake -o -name hook -o -name environment -o -name resource \) -prune -exec rm -rf {} + && \
+    rm -rf opt/buddy/share/ament_cmake* opt/buddy/share/colcon-core && \
+    find opt/buddy/share -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find opt/buddy/share -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find opt/buddy/share \( -name "*.zsh" -o -name "*.ps1" -o -name "*.idl" \) -delete 2>/dev/null || true
 
 COPY --from=jazzy-build /opt/ros2_core/local/lib/python3.12/ /tmp/ros2_local_python/
 RUN cp /tmp/ros2_bin/ros2 opt/buddy/bin/_ros2_entry && \
@@ -446,6 +478,8 @@ RUN cp /tmp/ros2_bin/ros2 opt/buddy/bin/_ros2_entry && \
     mkdir -p opt/buddy/lib/python3.12 && \
     cp -a /tmp/ros2_python/. opt/buddy/lib/python3.12/ && \
     cp -a /tmp/ros2_local_python/. opt/buddy/lib/python3.12/ && \
+    find opt/buddy/lib/python3.12 -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
+    # 保留 egg-info — ros2cli 通过 importlib.metadata.entry_points() 加载子命令（topic/node/...）
     if [ "$TARGET_ARCH" = "arm64" ]; then \
       find opt/buddy/lib/python3.12/ -name "*x86_64-linux-gnu*" -exec rename 's/x86_64-linux-gnu/aarch64-linux-gnu/' {} + 2>/dev/null || \
       find opt/buddy/lib/python3.12/ -name "*x86_64-linux-gnu*" | while read f; do mv "$f" "$(echo "$f" | sed 's/x86_64-linux-gnu/aarch64-linux-gnu/')"; done; \
@@ -462,11 +496,12 @@ COPY docker/packaging/postrm DEBIAN/postrm
 COPY scripts/common.sh opt/buddy/scripts/common.sh
 COPY scripts/status.sh opt/buddy/scripts/status.sh
 COPY scripts/start_llm_server.sh opt/buddy/scripts/start_llm_server.sh
+COPY scripts/npu_monitor.sh opt/buddy/scripts/npu_monitor.sh
+COPY scripts/switch_runtime.sh opt/buddy/scripts/switch_runtime.sh
 COPY services/llm/ opt/buddy/services/llm/
 
-COPY docker/buildvenv.sh docker/buildvenv.sh
-COPY docker/activate.sh docker/activate.sh
-RUN BUDDY_PYTHON_VER=3.12 bash docker/buildvenv.sh && rm docker/buildvenv.sh docker/activate.sh
+COPY docker/buildvenv.sh /tmp/buildvenv.sh
+RUN BUDDY_PYTHON_VER=3.12 bash /tmp/buildvenv.sh && rm /tmp/buildvenv.sh
 
 COPY docker/rkllm_server/ /tmp/rkllm_server/
 RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
@@ -476,20 +511,26 @@ RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
     fi && \
     rm -rf /tmp/rkllm_server \
            opt/buddy/services/llm/tests \
-           opt/buddy/services/llm/__pycache__ \
-           opt/buddy/services/llm/backends/__pycache__ \
            opt/buddy/rkllm_server/__pycache__ && \
+    find opt/buddy/services/llm -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true && \
     python3.12 -m venv opt/buddy/rkllm_server/.venv && \
     opt/buddy/rkllm_server/.venv/bin/pip install --no-cache-dir -r opt/buddy/rkllm_server/requirements.txt && \
+    find opt/buddy/rkllm_server/.venv -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
+    find opt/buddy/rkllm_server/.venv -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find opt/buddy/rkllm_server/.venv -name "*.pyc" -delete 2>/dev/null || true && \
     sha256sum opt/buddy/rkllm_server/requirements.txt | awk '{print $1}' > opt/buddy/rkllm_server/.venv/.requirements.sha256 && \
     touch opt/buddy/rkllm_server/.venv/.prebuilt && \
+    if [ "$TARGET_ARCH" = "arm64" ]; then \
+      mkdir -p opt/buddy/rkllm_server/lib && \
+      cp -a /opt/prebuilt/rkllm/lib/*.so* opt/buddy/rkllm_server/lib/; \
+    fi && \
     chmod 755 opt/buddy/run.sh opt/buddy/bin/buddy_main \
               opt/buddy/scripts/common.sh \
               opt/buddy/scripts/status.sh \
               opt/buddy/scripts/start_llm_server.sh \
+              opt/buddy/scripts/switch_runtime.sh \
               DEBIAN/postinst DEBIAN/prerm DEBIAN/postrm && \
     sed -i "s/__VERSION__/${VERSION}/" DEBIAN/control && \
-    echo "BUDDY_TARGET_ARCH=${TARGET_ARCH}" >> opt/buddy/etc/buddy.env && \
     echo "BUDDY_TARGET_DEVICE=${DEVICE}" >> opt/buddy/etc/buddy.env && \
     echo "BUDDY_ROS2_DISTRO=jazzy" >> opt/buddy/etc/buddy.env
 
@@ -508,17 +549,16 @@ ARG VERSION
 ARG DEVICE
 
 WORKDIR /models-root
+COPY scripts/models_manifest.sh /tmp/models_manifest.sh
 COPY models/ .
 
-RUN rm -rf ollama/ && \
+RUN set -e && \
+    ARCH=$([ "$TARGET_ARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
     rm -f *.tar* 2>/dev/null || true && \
-    if [ "$DEVICE" != "npu" ]; then \
-      echo "[INFO] Excluding RKNN models"; \
-      rm -rf zipformer-rknn/ melo-tts-rknn/ rkllm/; \
-    else \
-      echo "[INFO] Excluding server-only models for npu package"; \
-      rm -rf funasr-paraformer-zh-offline/ funasr-paraformer-zh-online/ funasr-vad/ ChatTTS/; \
-    fi && \
+    . /tmp/models_manifest.sh && \
+    excludes="$(models_exclude_for_device "$DEVICE" "$ARCH")" && \
+    echo "[INFO] Packaging models for device=$DEVICE arch=$ARCH" && \
+    for d in $excludes; do [ -e "$d" ] && { rm -rf "$d"; echo "[INFO] Excluded: $d"; }; done || true && \
     mkdir -p /output && tar czf /output/buddy-models_${VERSION}_${DEVICE}.tar.gz -C /models-root .
 
 # --- Jazzy Exports ---

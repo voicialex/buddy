@@ -140,11 +140,6 @@ ensure_venv() {
     fi
     # shellcheck disable=SC1091
     source "$venv_dir/bin/activate"
-    # Ensure pip is available (venv on some systems omits it)
-    if ! command -v pip &>/dev/null; then
-        log_step "Installing pip in venv..."
-        python3 -m ensurepip --upgrade 2>/dev/null || python3 -m pip --version || true
-    fi
 
     if command -v sha256sum >/dev/null 2>&1; then
         req_hash="$(sha256sum "$requirements" | awk '{print $1}')"
@@ -154,10 +149,16 @@ ensure_venv() {
 
     local prebuilt_marker="$venv_dir/.prebuilt"
 
-    # Prebuilt at build time: trust the venv, skip install
+    # Prebuilt at build time: trust the venv, skip pip check and install
     if [ -f "$prebuilt_marker" ] && [ -f "$state_file" ] && [ "$(cat "$state_file")" = "$req_hash" ]; then
         log_skip "Python dependencies (prebuilt)"
         return 0
+    fi
+
+    # Ensure pip is available (venv on some systems omits it)
+    if ! command -v pip &>/dev/null; then
+        log_step "Installing pip in venv..."
+        python3 -m ensurepip --upgrade 2>/dev/null || python3 -m pip --version || true
     fi
 
     log_step "Installing Python dependencies..."

@@ -26,15 +26,15 @@ Outputs:
     (arm64 always exports runtime deb; models tar builds only when missing)
 
 Examples:
-  ./build.sh                        # x86 + cpu + humble incremental
-  ./build.sh --ros-distro jazzy     # x86 + cpu + jazzy
+  ./build.sh                        # x86 + cpu + humble incremental (native)
+  ./build.sh --ros-distro jazzy     # x86 + cpu + jazzy (Docker, needs 24.04 toolchain)
   ./build.sh -d gpu                 # x86 + GPU (CUDA ORT)
   ./build.sh -t arm64 -d npu       # arm64 + NPU (RKNN) + humble
   ./build.sh -t arm64 --ros-distro jazzy  # arm64 + jazzy
   ./build.sh -t arm64               # arm64 incremental (~30s if only src changed)
   ./build.sh -t arm64 -c            # arm64 force rebuild (~3min, ccache still helps)
   ./build.sh -t arm64 -v 2.0.0     # arm64 custom version
-  ./build.sh --packages-select X    # x86 single package
+  ./build.sh --packages-select X    # x86 humble single package (native only)
 
 Optional service packages (LLM, ASR, TTS) — built automatically with arm64:
   output/<distro>/aarch64/services/buddy-service-llm_<ver>_aarch64.tar.gz
@@ -62,39 +62,42 @@ die() {
 # ============================================================
 # arm64 build (Docker cross-compile)
 # ============================================================
-build_arm64() {
+build_docker() {
+  local docker_arch="$1"   # arm64 | x86_64
+  local prebuilt_arch="$2" # aarch64 | x86_64
+  local deb_arch="$3"      # arm64 | amd64
   local version="${VERSION:-1.0.0}"
   local parallel="${BUDDY_PARALLEL_WORKERS:-$(nproc)}"
-  local output_dir="$ROOT_DIR/output/${ROS2_DISTRO}/aarch64/deb"
-  local deb_file="$output_dir/buddy-robot_${version}_arm64_${DEVICE}.deb"
+  local output_dir="$ROOT_DIR/output/${ROS2_DISTRO}/${prebuilt_arch}/deb"
+  local deb_file="$output_dir/buddy-robot_${version}_${deb_arch}_${DEVICE}.deb"
   local models_file="$output_dir/buddy-models_${version}_${DEVICE}.tar.gz"
 
-  echo "[INFO] Building buddy-robot_${version}_arm64_${DEVICE}.deb (cross-compile, ${ROS2_DISTRO})"
+  echo "[INFO] Building buddy-robot_${version}_${deb_arch}_${DEVICE}.deb (docker, ${ROS2_DISTRO})"
   echo "[INFO] Device target: $DEVICE"
 
   # Ensure prebuilt deps exist (auto-install if missing)
-  if [[ ! -d "$ROOT_DIR/prebuilt/aarch64/ros2_core" ]] \
-    || [[ ! -d "$ROOT_DIR/prebuilt/aarch64/onnxruntime" ]] \
-    || [[ ! -d "$ROOT_DIR/prebuilt/aarch64/sherpa-onnx" ]]; then
-    echo "[INFO] Running setup_prebuilt.sh --arch arm64 (distro: ${ROS2_DISTRO}) ..."
-    BUDDY_ROS2_DISTRO="$ROS2_DISTRO" "$ROOT_DIR/scripts/setup_prebuilt.sh" --arch arm64
+  if [[ ! -d "$ROOT_DIR/prebuilt/${prebuilt_arch}/ros2_core/$ROS2_DISTRO" ]] \
+    || [[ ! -d "$ROOT_DIR/prebuilt/${prebuilt_arch}/onnxruntime" ]] \
+    || [[ ! -d "$ROOT_DIR/prebuilt/${prebuilt_arch}/sherpa-onnx" ]]; then
+    echo "[INFO] Running setup_prebuilt.sh --arch ${prebuilt_arch} (distro: ${ROS2_DISTRO}) ..."
+    BUDDY_ROS2_DISTRO="$ROS2_DISTRO" "$ROOT_DIR/scripts/setup_prebuilt.sh" --arch "${prebuilt_arch}"
   fi
 
   # Device-specific prebuilt checks
   if [[ "$DEVICE" == "npu" ]]; then
-    if [[ ! -d "$ROOT_DIR/prebuilt/aarch64/rknn/lib" ]]; then
-      die "RKNN SDK not found at prebuilt/aarch64/rknn" \
+    if [[ ! -d "$ROOT_DIR/prebuilt/${prebuilt_arch}/rknn/lib" ]]; then
+      die "RKNN SDK not found at prebuilt/${prebuilt_arch}/rknn" \
           "Run: cd ../thirdparty && ./build.sh -t arm64 rknn"
     fi
   else
     # Keep Docker COPY stable when non-npu build skips RKNN.
-    mkdir -p "$ROOT_DIR/prebuilt/aarch64/rknn"
+    mkdir -p "$ROOT_DIR/prebuilt/${prebuilt_arch}/rknn"
   fi
 
   # Ensure runtime third_party prebuilt (runtime only needs OpenCV here).
-  if [[ ! -f "$ROOT_DIR/prebuilt/aarch64/opencv/lib/libopencv_core.so" ]]; then
-    echo "[INFO] Running build_thirdparty.sh --arch aarch64 ..."
-    "$ROOT_DIR/scripts/build_thirdparty.sh" --arch aarch64
+  if [[ ! -f "$ROOT_DIR/prebuilt/${prebuilt_arch}/opencv/lib/libopencv_core.so" ]]; then
+    echo "[INFO] Running build_thirdparty.sh --arch ${prebuilt_arch} ..."
+    "$ROOT_DIR/scripts/build_thirdparty.sh" --arch "${prebuilt_arch}"
   fi
 
   # Ensure models directory exists
@@ -111,7 +114,7 @@ build_arm64() {
     done
     if [[ ${#missing_zipformer[@]} -gt 0 ]]; then
       die "Missing zipformer-rknn model files: ${missing_zipformer[*]}" \
-          "Run: ./scripts/setup_prebuilt.sh --arch arm64 models"
+          "Run: ./scripts/setup_prebuilt.sh --arch ${prebuilt_arch} models"
     fi
   fi
 
@@ -127,7 +130,7 @@ build_arm64() {
   # Build/package app every run.
   DOCKER_BUILDKIT=1 docker build \
     "${cache_flag[@]}" \
-    --build-arg TARGET_ARCH=arm64 \
+    --build-arg TARGET_ARCH="$docker_arch" \
     --build-arg VERSION="$version" \
     --build-arg PARALLEL_WORKERS="$parallel" \
     --build-arg DEVICE="$DEVICE" \
@@ -141,7 +144,7 @@ build_arm64() {
     echo "[INFO] Models tarball missing, building once: $(basename "$models_file")"
     DOCKER_BUILDKIT=1 docker build \
       "${cache_flag[@]}" \
-      --build-arg TARGET_ARCH=arm64 \
+      --build-arg TARGET_ARCH="$docker_arch" \
       --build-arg VERSION="$version" \
       --build-arg PARALLEL_WORKERS="$parallel" \
       --build-arg DEVICE="$DEVICE" \
@@ -162,26 +165,42 @@ build_arm64() {
   echo "[INFO] Building service packages..."
   local py_ver="3.10"
   [[ "$ROS2_DISTRO" == "jazzy" ]] && py_ver="3.12"
-  "$ROOT_DIR/scripts/package_services.sh" --arch arm64 --version "$version" --python-ver "$py_ver" --ros-distro "$ROS2_DISTRO"
-  local svc_dir="$ROOT_DIR/output/${ROS2_DISTRO}/aarch64/services"
+  "$ROOT_DIR/scripts/package_services.sh" --arch "${prebuilt_arch}" --version "$version" --python-ver "$py_ver" --ros-distro "$ROS2_DISTRO"
+  local svc_dir="$ROOT_DIR/output/${ROS2_DISTRO}/${prebuilt_arch}/services"
   for svc in "$svc_dir"/*.tar.gz; do
     [[ -f "$svc" ]] && echo "[OK] $(basename "$svc") ($(du -sh "$svc" | cut -f1))"
   done
 
-  if [[ -f "$models_file" ]]; then
+  if [[ "$deb_arch" == "arm64" ]]; then
     echo ""
     echo "RK3588 deploy (recommended):"
     echo "  ./scripts/deploy_run_arm64_npu.sh --ros-distro ${ROS2_DISTRO}"
-    echo "Manual (minimal):"
-    echo "  scp $deb_file $models_file user@board:~/"
-    echo "  ssh user@board 'cd ~ && rm -rf output/opt/buddy && dpkg -x buddy-robot_${version}_arm64_${DEVICE}.deb output && mkdir -p output/buddy-models-cache && tar xzf buddy-models_${version}_${DEVICE}.tar.gz -C output/buddy-models-cache && ln -sfn ~/output/buddy-models-cache ~/output/opt/buddy/models && ~/output/opt/buddy/run.sh'"
+    echo ""
+    echo "Manual (minimal, deb only):"
+    echo "  scp $deb_file work:~/"
+    echo "  ssh work 'cd ~ && rm -rf output/opt/buddy && dpkg -x buddy-robot_${version}_arm64_${DEVICE}.deb output && ~/output/opt/buddy/run.sh'"
+    if [[ -f "$models_file" ]]; then
+      echo ""
+      echo "Manual (models, only when models/ needs refresh):"
+      echo "  scp $models_file work:~/"
+      echo "  ssh work 'cd ~ && mkdir -p output/buddy-models-cache && tar xzf buddy-models_${version}_${DEVICE}.tar.gz -C output/buddy-models-cache && ln -sfn ~/output/buddy-models-cache ~/output/opt/buddy/models'"
+    fi
   fi
 }
 
 # ============================================================
-# x86 build (native)
+# x86 build (native humble, docker jazzy)
 # ============================================================
 build_x86() {
+  # Jazzy requires Ubuntu 24.04 (GCC 13+, GLIBC 2.38). Host 22.04 cannot
+  # natively link jazzy prebuilt libs (missing GLIBCXX_3.4.32 / GLIBC_2.38).
+  # Route jazzy x86 builds through Docker (jazzy-base = ubuntu:24.04).
+  if [[ "$ROS2_DISTRO" == "jazzy" ]]; then
+    echo "[INFO] Jazzy x86 requires Ubuntu 24.04 toolchain — routing through Docker."
+    build_docker x86_64 x86_64 amd64
+    return $?
+  fi
+
   local arch
   case "$(uname -m)" in
     aarch64|arm64) arch="aarch64" ;;
@@ -192,7 +211,7 @@ build_x86() {
   mkdir -p "$ROOT_DIR/prebuilt"
   ln -sfn "$arch" "$ROOT_DIR/prebuilt/current"
 
-  local ros2_setup="$ROOT_DIR/prebuilt/current/ros2_core/setup.bash"
+  local ros2_setup="$ROOT_DIR/prebuilt/current/ros2_core/${ROS2_DISTRO}/setup.bash"
   local output_dir="$ROOT_DIR/output/${ROS2_DISTRO}/$arch"
 
   # Ensure prebuilt deps exist (auto-install if missing)
@@ -224,8 +243,7 @@ build_x86() {
     cmake_test_flag=(-DBUILD_TESTING=OFF)
   fi
 
-  # Colcon ignore for venv/services dirs (legacy + new)
-  [[ -d "$ROOT_DIR/venv-tts" ]] && touch "$ROOT_DIR/venv-tts/COLCON_IGNORE"
+  # Colcon ignore for services dir (skip Python services in ROS 2 build)
   [[ -d "$ROOT_DIR/services" ]] && touch "$ROOT_DIR/services/COLCON_IGNORE"
 
   # Clean
@@ -338,7 +356,7 @@ case "$TARGET" in
       echo "[CLEAN] Removing output/${ROS2_DISTRO}/aarch64/"
       rm -rf "$ROOT_DIR/output/${ROS2_DISTRO}/aarch64"
     fi
-    build_arm64
+    build_docker arm64 aarch64 arm64
     ;;
   *)
     die "Unknown target: $TARGET" "Use -t x86 or -t arm64"

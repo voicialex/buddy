@@ -18,4 +18,4 @@ fi
 
 export LD_LIBRARY_PATH="$DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PYTHONPATH="$DIR/lib/$PYVER/site-packages:$DIR/lib/$PYVER/dist-packages${PYTHONPATH:+:$PYTHONPATH}"
-exec "/usr/bin/$PYVER" "$DIR/bin/_ros2_entry" "$@"
+exec "/usr/bin/$PYVER" -c "import sys; sys.argv = ['ros2'] + sys.argv[1:]; from ros2cli.cli import main; main()" "$@"

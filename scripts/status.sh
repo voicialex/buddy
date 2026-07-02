@@ -23,6 +23,7 @@ fi
 COL_GREEN="\033[32m"
 COL_RED="\033[31m"
 COL_YELLOW="\033[33m"
+COL_CYAN="\033[36m"
 COL_RESET="\033[0m"
 
 PIPELINE_ONLY=false
@@ -218,14 +219,32 @@ elif [[ "$tts_mode" == "server" ]]; then
 fi
 
 inference_hw="unknown"
+inference_model=""
 if [[ "$inference_mode" == "local_route" || "$inference_mode" == "local_only" || "$inference_mode" == "hybrid" ]]; then
     if [[ "$inference_backend" == "rk_llm" ]]; then
         inference_hw="NPU"
+        # BUDDY_RKLLM_MODEL_PATH may be relative (resolved by start_llm_server.sh)
+        # or absolute. Show basename only.
+        if [[ -n "${BUDDY_RKLLM_MODEL_PATH:-}" ]]; then
+            inference_model="$(basename "${BUDDY_RKLLM_MODEL_PATH}")"
+        fi
     elif [[ "$inference_backend" == "ollama" || "$inference_backend" == "vllm" ]]; then
         if [[ "${BUILD_DEVICE:-${BUDDY_TARGET_DEVICE:-cpu}}" == "gpu" ]]; then
             inference_hw="GPU"
         else
             inference_hw="CPU"
+        fi
+        # ollama: BUDDY_OLLAMA_MODEL env or config.yaml; vllm: config.yaml only.
+        if [[ -n "${BUDDY_OLLAMA_MODEL:-}" && "$inference_backend" == "ollama" ]]; then
+            inference_model="$BUDDY_OLLAMA_MODEL"
+        elif [[ -f "$LLM_CONFIG" ]]; then
+            inference_model="$(awk -v b="$inference_backend" '
+                $0 ~ "^[[:space:]]*" b ":[[:space:]]*$" {flag=1; next}
+                flag && /^[[:space:]]+[A-Za-z0-9_]+:[[:space:]]*$/ {flag=0}
+                flag && /^[[:space:]]+model:[[:space:]]*/ {
+                    v=$0; sub(/^[^:]*:[[:space:]]*/, "", v); gsub(/"/, "", v); print v; exit
+                }
+            ' "$LLM_CONFIG")"
         fi
     fi
 fi
@@ -293,7 +312,11 @@ else
 echo "    Vision ....... disabled"
 fi
 if [[ "$inference_mode" == "local_route" || "$inference_mode" == "local_only" || "$inference_mode" == "hybrid" ]]; then
-echo "    Inference .... ${inference_mode} (backend=${inference_backend}, hw=${inference_hw})"
+    if [[ -n "$inference_model" ]]; then
+        echo "    Inference .... ${inference_mode} (backend=${inference_backend}, hw=${inference_hw}, model=${inference_model})"
+    else
+        echo "    Inference .... ${inference_mode} (backend=${inference_backend}, hw=${inference_hw})"
+    fi
 else
     echo "    Inference .... ${inference_mode}"
 fi
@@ -352,6 +375,9 @@ for entry in "${SERVICES[@]}"; do
         elif check_port "$port"; then
             status="${COL_RED}stopped${COL_RESET}"
             detail="$url (port up, api not ready)"
+        elif [[ "${BUDDY_RKLLM_ON_DEMAND:-1}" == "1" ]]; then
+            status="${COL_CYAN}on-demand${COL_RESET}"
+            detail="$url (spawned by LLM API on first request)"
         else
             status="${COL_RED}stopped${COL_RESET}"
             detail="$url"

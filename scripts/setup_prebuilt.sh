@@ -19,6 +19,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ARCH="${BUDDY_ARCH:-$(uname -m)}"
 ARCH_SPECIFIED=false
 PROXY_URL="${BUDDY_PROXY_URL:-}"
+ALL_MODELS=0
 print_help() {
     local clash_port=""
     clash_port="$(ss -lntp 2>/dev/null | awk '/clash|verge/ && /127.0.0.1:/ { split($4,a,":"); print a[length(a)]; exit }')"
@@ -32,6 +33,7 @@ Skips anything already present — safe to re-run.
 Options:
   -t, --arch <x86|arm64>   Target arch (default: both x86_64 + aarch64)
   --proxy <url>            HTTP proxy for this run
+  --all-models             Also download optional models (kokoro, FunASR, MOSS-TTS)
   -h, --help               Show this help
 EOF
 
@@ -44,9 +46,16 @@ EOF
     cat <<'EOF'
 
 Models (auto-downloaded, skipped if present):
-  Auto     ASR (ONNX x86 / RKNN arm64), KWS, TTS (kokoro + melo), FunASR,
-           MOSS-TTS, Vision (face_emotion)
-  Manual   ChatTTS (~1.2GB, auto on first run), Ollama (~4.4GB), RKLLM (~3.5GB)
+  Core     ASR (ONNX x86 / RKNN arm64), KWS, MeloTTS (ONNX + RKNN),
+           Vision (face_emotion), RKLLM (arm64 only)
+  Optional kokoro TTS, FunASR, MOSS-TTS — skipped unless enabled
+  Manual   ChatTTS (~1.2GB, auto on first run), Ollama (~4.4GB)
+
+Enable optional models:
+  --all-models              Download all (core + optional)
+  BUDDY_ENABLE_KOKORO=1     Enable kokoro TTS (~400MB)
+  BUDDY_ENABLE_FUNASR=1     Enable FunASR paraformer (~1.5GB, needs modelscope)
+  BUDDY_ENABLE_MOSS_TTS=1   Enable MOSS-TTS Nano (~500MB)
 
 Override via env vars:
   BUDDY_ROS2_TAG=<tag>         ROS 2 Core release tag (default: v2026.06.2)
@@ -54,6 +63,7 @@ Override via env vars:
   BUDDY_THIRDPARTY_TAG=<tag>   Third-party release tag (default: v2026.06.16)
   BUDDY_ZIPFORMER_RKNN_HF_BASE  BUDDY_ZIPFORMER_ONNX_HF_BASE
   BUDDY_MELO_TTS_HF_BASE        BUDDY_FACE_EMOTION_HF_BASE
+  BUDDY_RKLLM_HF_BASE           BUDDY_RKLLM_MODEL_FILE
 
 Examples:
   ./scripts/setup_prebuilt.sh                              # Everything (both x86_64 + aarch64)
@@ -73,6 +83,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -t|--arch) ARCH="$2"; ARCH_SPECIFIED=true; shift 2 ;;
         --proxy) PROXY_URL="$2"; shift 2 ;;
+        --all-models) ALL_MODELS=1; shift ;;
         *)
             echo "[ERROR] Unknown option: $1"
             echo "Run '$0 --help' for usage."
@@ -111,6 +122,8 @@ MELO_TTS_HF_BASE="${BUDDY_MELO_TTS_HF_BASE:-https://huggingface.co/voicialex/mel
 ZIPFORMER_RKNN_HF_BASE="${BUDDY_ZIPFORMER_RKNN_HF_BASE:-https://huggingface.co/voicialex/zipformer-asr-rknn/resolve/main/rknn}"
 ZIPFORMER_ONNX_HF_BASE="${BUDDY_ZIPFORMER_ONNX_HF_BASE:-https://huggingface.co/voicialex/zipformer-asr-rknn/resolve/main/onnx}"
 FACE_EMOTION_HF_BASE="${BUDDY_FACE_EMOTION_HF_BASE:-https://huggingface.co/voicialex/face-emotion-rknn/resolve/main}"
+RKLLM_HF_BASE="${BUDDY_RKLLM_HF_BASE:-https://huggingface.co/whaoyang/unsloth-gemma-3-1b-it-rk3588-1.2.1/resolve/main}"
+RKLLM_MODEL_FILE="${BUDDY_RKLLM_MODEL_FILE:-gemma-3-1b-it-w8a8.rkllm}"
 
 # GitHub Release fallback (override via BUDDY_* env vars)
 THIRDPARTY_RELEASE_TAG="${BUDDY_THIRDPARTY_TAG:-v2026.06.16}"
@@ -128,6 +141,7 @@ MOSS_TTS_HF_BASE="https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX/r
 MOSS_CODEC_HF_BASE="https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX/resolve/main"
 
 source "$SCRIPT_DIR/common.sh"
+source "$SCRIPT_DIR/models_manifest.sh"
 
 enable_proxy_for_run() {
     if [[ -z "$PROXY_URL" ]]; then
@@ -259,17 +273,14 @@ check_thirdparty() {
 # ══════════════════════════════════════════════════════════
 
 setup_ros2_core() {
-    # Check if the correct distro is already installed
-    local distro_marker="$PREBUILT_DIR/ros2_core/.buddy_ros2_distro"
-    if [ -f "$PREBUILT_DIR/ros2_core/setup.bash" ] && [ -f "$distro_marker" ] && [ "$(cat "$distro_marker")" = "$ROS2_DISTRO" ]; then
+    # Distro 是子目录名：prebuilt/<arch>/ros2_core/<distro>/
+    # 不同 distro 共存，互不覆盖。
+    local ros2_distro_dir="$PREBUILT_DIR/ros2_core/$ROS2_DISTRO"
+
+    # 已安装对应 distro → 跳过
+    if [ -f "$ros2_distro_dir/setup.bash" ]; then
         log_skip "ROS 2 Core (${ROS2_DISTRO})"
         return 0
-    fi
-
-    # Wrong distro or no marker → replace
-    if [ -d "$PREBUILT_DIR/ros2_core" ]; then
-        log_step "Replacing ROS 2 Core (wrong distro or version)"
-        rm -rf "$PREBUILT_DIR/ros2_core"
     fi
 
     local tarball=""
@@ -298,12 +309,11 @@ setup_ros2_core() {
     fi
 
     log_step "Extracting ROS 2 Core (${ROS2_DISTRO}) from $(basename "$tarball") ..."
-    mkdir -p "$PREBUILT_DIR/ros2_core"
-    tar xzf "$tarball" -C "$PREBUILT_DIR/ros2_core"
+    mkdir -p "$ros2_distro_dir"
+    tar xzf "$tarball" -C "$ros2_distro_dir"
     if [ "$cleanup_tarball" = true ]; then
         rm -f "$tarball"
     fi
-    echo "$ROS2_DISTRO" > "$distro_marker"
     log_ok "ROS 2 Core (${ROS2_DISTRO})"
 }
 
@@ -506,21 +516,6 @@ setup_model_tts_melo_rknn() {
     log_ok "TTS Melo RKNN model ($name)"
 }
 
-setup_model_tts_vits() {
-    local name="vits-icefall-zh-aishell3"
-    local url="https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/${name}.tar.bz2"
-    if [ -f "$MODELS_DIR/$name/model.onnx" ]; then
-        log_skip "TTS VITS model ($name)"
-        return 0
-    fi
-    log_step "Downloading VITS TTS model ($name) ..."
-    local tmp="$MODELS_DIR/${name}.tar.bz2"
-    download "$url" "$tmp" || { log_err "Failed to download VITS TTS model"; return 1; }
-    tar xjf "$tmp" -C "$MODELS_DIR" || { rm -f "$tmp"; log_err "Failed to extract VITS TTS model"; return 1; }
-    rm -f "$tmp"
-    log_ok "TTS VITS model ($name)"
-}
-
 setup_model_funasr() {
     local offline_dir="$MODELS_DIR/funasr-paraformer-zh-offline"
     local online_dir="$MODELS_DIR/funasr-paraformer-zh-online"
@@ -650,6 +645,26 @@ setup_model_emotion() {
     log_ok "Vision model ($name)"
 }
 
+setup_model_rkllm() {
+    # RKLLM 模型仅 arm64 NPU 使用; x86_64 跳过
+    if [ "$ARCH_NORMALIZED" != "aarch64" ]; then
+        return 0
+    fi
+    local target_dir="$MODELS_DIR/rkllm"
+    local target_file="$target_dir/$RKLLM_MODEL_FILE"
+    if [ -f "$target_file" ]; then
+        log_skip "RKLLM model ($RKLLM_MODEL_FILE)"
+        return 0
+    fi
+    mkdir -p "$target_dir"
+    log_step "Downloading RKLLM model ($RKLLM_MODEL_FILE, ~1.6GB) from HF ..."
+    download "$RKLLM_HF_BASE/$RKLLM_MODEL_FILE" "$target_file" || {
+        log_err "Failed to download RKLLM model: $RKLLM_MODEL_FILE"
+        return 1
+    }
+    log_ok "RKLLM model ($RKLLM_MODEL_FILE)"
+}
+
 # ══════════════════════════════════════════════════════════
 # 编排
 # ══════════════════════════════════════════════════════════
@@ -663,6 +678,49 @@ do_prebuilt() {
     setup_sentencepiece
     ensure_rkllm_server_lib
 
+}
+
+check_model_kokoro() {
+    local name="kokoro-int8-multi-lang-v1_1"
+    if [ -f "$MODELS_DIR/$name/model.int8.onnx" ]; then
+        log_skip "TTS kokoro model ($name)"
+        return 0
+    fi
+    echo ""
+    log_step "[Optional] TTS kokoro (~400MB) — skipped by default"
+    echo "       Enable: BUDDY_ENABLE_KOKORO=1 $0"
+    echo "       Or:    $0 --all-models"
+}
+
+check_model_funasr() {
+    local offline_dir="$MODELS_DIR/funasr-paraformer-zh-offline"
+    local online_dir="$MODELS_DIR/funasr-paraformer-zh-online"
+    local vad_dir="$MODELS_DIR/funasr-vad"
+    if [ -f "$offline_dir/model_quant.onnx" ] && \
+       [ -f "$online_dir/model_quant.onnx" ] && \
+       [ -f "$vad_dir/model_quant.onnx" ]; then
+        log_skip "FunASR (paraformer-zh offline + online + vad)"
+        return 0
+    fi
+    echo ""
+    log_step "[Optional] FunASR (~1.5GB) — skipped by default"
+    echo "       Enable: BUDDY_ENABLE_FUNASR=1 $0"
+    echo "       Or:    $0 --all-models"
+    echo "       Requires: pip install modelscope"
+}
+
+check_model_moss_tts() {
+    local model_dir="$MODELS_DIR/$MOSS_TTS_MODEL_DIR"
+    local tts_dir="$model_dir/MOSS-TTS-Nano-100M-ONNX"
+    local codec_dir="$model_dir/MOSS-Audio-Tokenizer-Nano-ONNX"
+    if [ -f "$tts_dir/moss_tts_global_shared.data" ] && [ -f "$codec_dir/moss_audio_tokenizer_decode_shared.data" ]; then
+        log_skip "MOSS-TTS Nano models"
+        return 0
+    fi
+    echo ""
+    log_step "[Optional] MOSS-TTS Nano (~500MB) — skipped by default"
+    echo "       Enable: BUDDY_ENABLE_MOSS_TTS=1 $0"
+    echo "       Or:    $0 --all-models"
 }
 
 check_model_chattts() {
@@ -693,23 +751,76 @@ check_model_ollama() {
 }
 
 do_models() {
-    log_stage "Models (${ARCH_NORMALIZED})"
+    log_stage "Core Models (${ARCH_NORMALIZED})"
     mkdir -p "$MODELS_DIR"
     if [ "$ARCH_NORMALIZED" != "aarch64" ]; then
         setup_model_asr
     fi
     setup_model_asr_rknn
     setup_model_kws
-    setup_model_tts
     setup_model_tts_melo
     setup_model_tts_melo_rknn
-    setup_model_funasr
-    setup_model_moss_tts
     setup_model_emotion
+    setup_model_rkllm
 
-    log_stage "Manual Setup (optional)"
+    log_stage "Optional Models (kokoro / FunASR / MOSS-TTS)"
+    if [[ "$ALL_MODELS" == "1" || "${BUDDY_ENABLE_KOKORO:-0}" == "1" ]]; then
+        setup_model_tts
+    else
+        check_model_kokoro
+    fi
+    if [[ "$ALL_MODELS" == "1" || "${BUDDY_ENABLE_FUNASR:-0}" == "1" ]]; then
+        setup_model_funasr
+    else
+        check_model_funasr
+    fi
+    if [[ "$ALL_MODELS" == "1" || "${BUDDY_ENABLE_MOSS_TTS:-0}" == "1" ]]; then
+        setup_model_moss_tts
+    else
+        check_model_moss_tts
+    fi
+
+    log_stage "Manual Setup (ChatTTS / Ollama)"
     check_model_chattts
     check_model_ollama
+
+    report_manifest_status
+}
+
+# Report which manifest dirs are present/missing for this arch, and what
+# packaging will exclude. Helps catch stale leftovers before `build.sh`.
+report_manifest_status() {
+    log_stage "Manifest Status (${ARCH_NORMALIZED})"
+    local entry dir class present=0 missing=0
+    for entry in "${MODEL_MANIFEST[@]}"; do
+        _parse_entry "$entry" || continue
+        # Skip entries that don't apply to this arch at all.
+        _list_contains "$ARCH_NORMALIZED" "$M_ARCHS" || continue
+        if [[ -d "$MODELS_DIR/$M_DIR" ]]; then
+            present=$((present + 1))
+        else
+            case "$M_CLASS" in
+                core)
+                    log_err "Missing core model: $M_DIR"
+                    missing=$((missing + 1))
+                    ;;
+                optional|manual|legacy) ;;  # silent
+            esac
+        fi
+    done
+    log_ok "Manifest: ${present} dirs present, ${missing} core missing"
+
+    # Show what packaging would exclude for each device on this arch.
+    local dev
+    for dev in cpu gpu npu; do
+        # Only report devices that make sense for this arch.
+        [[ "$dev" == "npu" && "$ARCH_NORMALIZED" != "aarch64" ]] && continue
+        local excl
+        excl="$(models_exclude_for_device "$dev" "$ARCH_NORMALIZED")"
+        local count=0
+        for d in $excl; do count=$((count + 1)); done
+        echo "       device=${dev}: excludes ${count} dirs"
+    done
 }
 
 # ── Per-arch setup ──────────────────────────────────────────

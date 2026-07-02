@@ -2,7 +2,7 @@ Package: buddy-robot
 Version: __VERSION__
 Architecture: arm64
 Maintainer: buddy-dev <dev@example.com>
-Depends: libasound2, libssl3, libstdc++6, python3 (>= 3.10), python3-venv, curl
+Depends: libasound2 | libasound2t64, libssl3 | libssl3t64, libstdc++6, python3 (>= 3.10), python3-venv, python3-numpy, python3-argcomplete, python3-psutil, python3-yaml, python3-setuptools, curl
 Description: Buddy Robot - AI companion runtime
  Core runtime package for buddy_main and direct dependencies.
  Optional ASR/TTS/LLM services are packaged separately.

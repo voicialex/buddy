@@ -411,6 +411,43 @@ log_stage "Step 3/5: Apply runtime/models/services on board"
     test -x ${BOARD_OUTPUT_BASE}/opt/buddy/run.sh; \
     echo '[OK] deploy ready at ${BOARD_OUTPUT_BASE}/opt/buddy'"
 log_ok "Deploy complete"
+
+# ─── apt 依赖自动补齐 ─────────────────────────────────────────────────────
+# dpkg -x 只解压文件,不解析 Depends 字段。读 deb 的 Depends 列表,对每个
+# 依赖组(逗号分隔,| 替代项)检查是否已装;缺的解析出第一个有 candidate
+# 的具体包名,批量 apt install -y。
+# 必须处理 | 替代项:Ubuntu 24.04 把 libssl3 改名为 libssl3t64 等。
+if [[ "$DO_DEPLOY_RUNTIME" == "1" ]]; then
+    log_stage "Step 3.5/5: Verify apt dependencies from deb"
+    missing=$("${SSH_BASE[@]}" "BOARD_DEB_PATH='$BOARD_DEB_PATH' bash -s" <<'REMOTE_EOF' 2>/dev/null || true
+set -uo pipefail
+dpkg -f "$BOARD_DEB_PATH" Depends 2>/dev/null | tr ',' '\n' | while IFS= read -r group; do
+    group="$(echo "$group" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; s/([^)]*)//g')"
+    [ -z "$group" ] && continue
+    satisfied=0
+    for alt in $(echo "$group" | tr '|' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'); do
+        if dpkg -s "$alt" 2>/dev/null | grep -q '^Status:.*installed'; then
+            satisfied=1; break
+        fi
+    done
+    [ "$satisfied" = "1" ] && continue
+    for alt in $(echo "$group" | tr '|' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'); do
+        pol="$(apt-cache policy "$alt" 2>/dev/null || true)"
+        if echo "$pol" | grep -q '^  Candidate: .*[0-9]'; then
+            echo "$alt"; break
+        fi
+    done
+done | paste -sd ' ' -
+REMOTE_EOF
+)
+    if [[ -n "$missing" ]]; then
+        log_step "Installing missing deps: $missing"
+        "${SSH_BASE[@]}" "echo '${BOARD_PASS}' | sudo -S apt-get update -qq 2>/dev/null; \
+                          echo '${BOARD_PASS}' | sudo -S apt-get install -y --no-install-recommends ${missing} 2>&1 | tail -5"
+    else
+        log_skip "apt dependencies already satisfied"
+    fi
+fi
 else
 log_stage "Step 3/5: Apply runtime/models/services on board"
 log_skip "Deploy action disabled"
