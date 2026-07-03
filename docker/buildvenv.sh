@@ -24,7 +24,7 @@ grep -v '^\s*#' "$REQ_FILE" | grep -v '^\s*$' | \
   done > /tmp/venv-requirements.txt
 
 # Download wheels for aarch64 (locked versions = no backtracking)
-pip download \
+pip download --quiet \
   --platform manylinux_2_17_aarch64 \
   --platform manylinux2014_aarch64 \
   --platform any \

@@ -77,7 +77,6 @@ BrainNode::BrainNode(const rclcpp::NodeOptions& options) : rclcpp_lifecycle::Lif
 CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State&) {
     RCLCPP_INFO(get_logger(), "BrainNode: configuring");
 
-    declare_parameter("system_prompt_path", "");
     declare_parameter("max_history_turns", 10);
     declare_parameter("emotion_trigger.enabled", true);
     declare_parameter("emotion_trigger.negative_emotions", std::vector<std::string>{"sad", "angry", "fear"});
@@ -133,28 +132,8 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State&) {
         emotion_trigger_ = std::make_unique<EmotionTrigger>(emo_cfg);
     }
 
-    // System prompt
-    std::string system_prompt;
-    auto prompt_path = get_parameter("system_prompt_path").as_string();
-    if (!prompt_path.empty()) {
-        std::filesystem::path p(prompt_path);
-        if (p.is_relative()) {
-            try {
-                auto share_dir = ament_index_cpp::get_package_share_directory("buddy_app");
-                p = std::filesystem::path(share_dir) / prompt_path;
-            } catch (const std::exception& e) {
-                RCLCPP_WARN(get_logger(), "Failed to resolve package share dir: %s, using raw path", e.what());
-                p = prompt_path;
-            }
-        }
-        std::ifstream f(p);
-        if (f.is_open()) {
-            std::ostringstream ss;
-            ss << f.rdbuf();
-            system_prompt = ss.str();
-        }
-    }
-    session_.configure(max_history_turns, std::move(system_prompt));
+    // System prompt is managed by the Python LLM service (services/llm/config.yaml).
+    session_.configure(max_history_turns, "");
 
     // Image capture coordinator
     const bool voice_attach_image = get_parameter("voice_trigger.attach_image").as_bool();

@@ -68,8 +68,8 @@ public:
 
         if (has_voice_) {
             utterance_samples_.insert(utterance_samples_.end(), samples, samples + n);
-            RCLCPP_INFO(logger_,
-                        "[ASR_DIAG] native_state n=%d rms=%.5f silence_chunks=%d/%d buffered_samples=%zu",
+            RCLCPP_DEBUG(logger_,
+                         "[ASR_DIAG] native_state n=%d rms=%.5f silence_chunks=%d/%d buffered_samples=%zu",
                         n,
                         rms,
                         silence_chunks_,
@@ -80,8 +80,8 @@ public:
         if (!has_voice_ || silence_chunks_ < kSilenceChunksForFinal) return {};
 
         try {
-            RCLCPP_INFO(logger_,
-                        "[ASR_DIAG] final_flush begin buffered_samples=%zu silence_chunks=%d/%d",
+            RCLCPP_DEBUG(logger_,
+                         "[ASR_DIAG] final_flush begin buffered_samples=%zu silence_chunks=%d/%d",
                         utterance_samples_.size(),
                         silence_chunks_,
                         kSilenceChunksForFinal);

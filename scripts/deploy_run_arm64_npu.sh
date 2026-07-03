@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
-BOARD_HOST="192.168.2.117"
+BOARD_HOST="work"
 BOARD_USER="pi"
 BOARD_PASS="pi"
 ROS2_DISTRO="humble"
@@ -13,8 +13,7 @@ VERSION="1.0.0"
 BOARD_DEB_PATH="~/buddy-robot_${VERSION}_arm64_npu.deb"
 BOARD_OUTPUT_BASE="~/output"
 RUN_SECONDS="25"
-BUILD_SERVICES="0"
-ACTION_LIST="build,deploy,run,fetch-log"
+ACTION_LIST="deploy,run,fetch-log"
 DEPLOY_PARTS="runtime,models,services"
 LOCAL_LOG_DIR="$ROOT_DIR/output/board_logs"
 
@@ -34,31 +33,20 @@ Core options:
   -h, --help              Show this help
 
 Action control (what to do):
-  --actions <list>        Comma list: build,deploy,run,fetch-log
+  --actions <list>        Comma list: deploy,run,fetch-log
                           Default: ${ACTION_LIST}
                           Typical:
-                            build,deploy,run,fetch-log   # full pipeline
-                            deploy                        # deploy only
-                            run,fetch-log                 # run existing board install
+                            deploy,run,fetch-log   # deploy + test run
+                            deploy                 # deploy only
+                            run,fetch-log          # run existing board install
 
 Deploy part control (what to deploy in deploy action):
   --parts <list>          Comma list: runtime,models,services | all
                           Default: ${DEPLOY_PARTS}
-                          Typical:
-                            runtime,models
-                            services
-                            all
-
-Service packaging:
-  --build-services        Build service tarballs before deploy
-
-Compatibility (deprecated but still supported):
-  --no-build --no-runtime --no-models --no-services --no-run --no-fetch-log
 
 Examples:
   ./scripts/deploy_run_arm64_npu.sh
-  ./scripts/deploy_run_arm64_npu.sh --actions deploy --parts runtime,models
-  ./scripts/deploy_run_arm64_npu.sh --actions deploy --parts services --build-services
+  ./scripts/deploy_run_arm64_npu.sh --actions deploy
   ./scripts/deploy_run_arm64_npu.sh --actions run,fetch-log --run-seconds 40
 USAGE
 }
@@ -113,10 +101,6 @@ while [[ $# -gt 0 ]]; do
         --parts)
             DEPLOY_PARTS="$(normalize_list "$2")"
             shift 2
-            ;;
-        --build-services)
-            BUILD_SERVICES="1"
-            shift
             ;;
         --no-build)
             warn_deprecated "--no-build" "--actions deploy,run,fetch-log"
@@ -218,7 +202,7 @@ MODELS_GLOB="$ROOT_DIR/output/${ROS2_DISTRO}/aarch64/deb/buddy-models_*_npu.tar.
 MODELS_PATH="$(ls -t $MODELS_GLOB 2>/dev/null | head -1 || true)"
 MODELS_REMOTE_PATH="~/buddy-models_npu.tar.gz"
 MODELS_REMOTE_SHA_PATH="~/buddy-models_npu.sha256"
-MODELS_REMOTE_CACHE_DIR="${BOARD_OUTPUT_BASE}/buddy-models-cache"
+MODELS_REMOTE_CACHE_DIR="${BOARD_OUTPUT_BASE}/opt/buddy/models"
 DEB_REMOTE_SHA_PATH="~/buddy-runtime.sha256"
 
 SVC_DIR="$ROOT_DIR/output/${ROS2_DISTRO}/aarch64/services"
@@ -232,32 +216,6 @@ mkdir -p "$LOCAL_LOG_DIR"
 SSH_BASE=(sshpass -p "$BOARD_PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${BOARD_USER}@${BOARD_HOST}")
 SCP_BASE=(sshpass -p "$BOARD_PASS" scp -o StrictHostKeyChecking=no)
 
-log_stage "Step 1/5: Build artifacts"
-if [[ "$DO_BUILD" == "1" ]]; then
-    log_step "Running ./build.sh -t arm64 -d npu --ros-distro $ROS2_DISTRO"
-    (
-        cd "$ROOT_DIR"
-        ./build.sh -t arm64 -d npu --ros-distro "$ROS2_DISTRO"
-    )
-    log_ok "Build finished"
-else
-    log_skip "Build"
-fi
-
-if [[ "$BUILD_SERVICES" == "1" ]]; then
-    py_ver="3.10"
-    [[ "$ROS2_DISTRO" == "jazzy" ]] && py_ver="3.12"
-    log_step "Running ./scripts/package_services.sh --arch arm64 --ros-distro $ROS2_DISTRO --python-ver $py_ver --version $VERSION"
-    (
-        cd "$ROOT_DIR"
-        ./scripts/package_services.sh --arch arm64 --ros-distro "$ROS2_DISTRO" --python-ver "$py_ver" --version "$VERSION"
-    )
-    SVC_LLM_PATH="$(ls -t "$SVC_DIR"/buddy-service-llm_*_aarch64.tar.gz 2>/dev/null | head -1 || true)"
-    SVC_FUNASR_PATH="$(ls -t "$SVC_DIR"/buddy-service-funasr_*_aarch64.tar.gz 2>/dev/null | head -1 || true)"
-    SVC_CHATTTS_PATH="$(ls -t "$SVC_DIR"/buddy-service-chattts_*_aarch64.tar.gz 2>/dev/null | head -1 || true)"
-    log_ok "Service packages finished"
-fi
-
 if [[ "$DO_DEPLOY_RUNTIME" == "1" && ! -f "$DEB_PATH" ]]; then
     log_err "Deb not found: $DEB_PATH"
     exit 1
@@ -270,7 +228,7 @@ DEPLOY_SVC_FUNASR="0"
 DEPLOY_SVC_CHATTTS="0"
 
 if [[ "$DO_DEPLOY" == "1" ]]; then
-    log_stage "Step 2/5: Upload changed artifacts"
+    log_stage "Step 1/4: Upload changed artifacts"
     "${SSH_BASE[@]}" "mkdir -p ${BOARD_OUTPUT_BASE} ${SVC_REMOTE_BASE}"
     if [[ "$DO_DEPLOY_RUNTIME" == "1" ]]; then
         local_runtime_sha="$(sha256sum "$DEB_PATH" | awk '{print $1}')"
@@ -344,12 +302,12 @@ if [[ "$DO_DEPLOY" == "1" ]]; then
     fi
     log_ok "Upload stage complete"
 else
-    log_stage "Step 2/5: Upload changed artifacts"
+    log_stage "Step 1/4: Upload changed artifacts"
     log_skip "Deploy action disabled"
 fi
 
 if [[ "$DO_DEPLOY" == "1" ]]; then
-log_stage "Step 3/5: Apply runtime/models/services on board"
+log_stage "Step 2/4: Apply runtime/models/services on board"
 "${SSH_BASE[@]}" "set -euo pipefail; \
     DEPLOY_RUNTIME=${DEPLOY_RUNTIME}; \
     DEPLOY_MODELS=${DEPLOY_MODELS}; \
@@ -366,8 +324,14 @@ log_stage "Step 3/5: Apply runtime/models/services on board"
     mkdir -p ${BOARD_OUTPUT_BASE}; \
     mkdir -p \"\$SVC_REMOTE_BASE\" \"\$SVC_CACHE_BASE\"; \
     if [ \"\$DEPLOY_RUNTIME\" = \"1\" ] && [ -f \"\$BOARD_DEB_PATH\" ]; then \
+      mv ${BOARD_OUTPUT_BASE}/opt/buddy/models /tmp/buddy-models-tmp 2>/dev/null || true; \
       rm -rf ${BOARD_OUTPUT_BASE}/opt/buddy; \
       dpkg -x \"\$BOARD_DEB_PATH\" ${BOARD_OUTPUT_BASE}; \
+      mkdir -p ${BOARD_OUTPUT_BASE}/opt/buddy/models; \
+      if [ -d /tmp/buddy-models-tmp ]; then \
+        mv /tmp/buddy-models-tmp/* ${BOARD_OUTPUT_BASE}/opt/buddy/models/ 2>/dev/null || true; \
+        rm -rf /tmp/buddy-models-tmp; \
+      fi; \
       sha256sum \"\$BOARD_DEB_PATH\" | awk '{print \$1}' > \"\$DEB_REMOTE_SHA_PATH\"; \
     fi; \
     if [ ! -d ${BOARD_OUTPUT_BASE}/opt/buddy ]; then \
@@ -379,10 +343,6 @@ log_stage "Step 3/5: Apply runtime/models/services on board"
       mkdir -p \"\$MODELS_REMOTE_CACHE_DIR\"; \
       tar xzf \"\$MODELS_REMOTE_PATH\" -C \"\$MODELS_REMOTE_CACHE_DIR\"; \
       sha256sum \"\$MODELS_REMOTE_PATH\" | awk '{print \$1}' > \"\$MODELS_REMOTE_SHA_PATH\"; \
-    fi; \
-    if [ -d \"\$MODELS_REMOTE_CACHE_DIR\" ]; then \
-      rm -rf ${BOARD_OUTPUT_BASE}/opt/buddy/models; \
-      ln -sfn \"\$MODELS_REMOTE_CACHE_DIR\" ${BOARD_OUTPUT_BASE}/opt/buddy/models; \
     fi; \
     if [ \"\$DEPLOY_SVC_LLM\" = \"1\" ] && [ -f \"\$SVC_REMOTE_BASE/buddy-service-llm.tar.gz\" ]; then \
       rm -rf \"\$SVC_CACHE_BASE/llm\"; mkdir -p \"\$SVC_CACHE_BASE/llm\"; \
@@ -408,7 +368,8 @@ log_stage "Step 3/5: Apply runtime/models/services on board"
       rm -rf ${BOARD_OUTPUT_BASE}/opt/buddy/services/tts; \
       cp -a \"\$SVC_CACHE_BASE/chattts/.\" ${BOARD_OUTPUT_BASE}/opt/buddy/; \
     fi; \
-    test -x ${BOARD_OUTPUT_BASE}/opt/buddy/run.sh; \
+    cd ${BOARD_OUTPUT_BASE}/opt/buddy; \
+    ./scripts/switch_runtime.sh npu; \
     echo '[OK] deploy ready at ${BOARD_OUTPUT_BASE}/opt/buddy'"
 log_ok "Deploy complete"
 
@@ -418,7 +379,7 @@ log_ok "Deploy complete"
 # 的具体包名,批量 apt install -y。
 # 必须处理 | 替代项:Ubuntu 24.04 把 libssl3 改名为 libssl3t64 等。
 if [[ "$DO_DEPLOY_RUNTIME" == "1" ]]; then
-    log_stage "Step 3.5/5: Verify apt dependencies from deb"
+    log_stage "Step 2.5/4: Verify apt dependencies from deb"
     missing=$("${SSH_BASE[@]}" "BOARD_DEB_PATH='$BOARD_DEB_PATH' bash -s" <<'REMOTE_EOF' 2>/dev/null || true
 set -uo pipefail
 dpkg -f "$BOARD_DEB_PATH" Depends 2>/dev/null | tr ',' '\n' | while IFS= read -r group; do
@@ -449,22 +410,23 @@ REMOTE_EOF
     fi
 fi
 else
-log_stage "Step 3/5: Apply runtime/models/services on board"
+log_stage "Step 2/4: Apply runtime/models/services on board"
 log_skip "Deploy action disabled"
 fi
 
 if [[ "$DO_RUN" == "1" ]]; then
-    log_stage "Step 4/5: Run buddy and capture log"
+    log_stage "Step 3/4: Run buddy and capture log"
     log_step "Running on board for ${RUN_SECONDS}s -> /tmp/buddy/buddy-main.log"
     set +e
     "${SSH_BASE[@]}" "set -euo pipefail; \
         mkdir -p /tmp/buddy; \
         cd ${BOARD_OUTPUT_BASE}/opt/buddy; \
         rm -f /tmp/buddy/buddy-main.log /tmp/buddy/buddy-main.status; \
-        set +e; timeout --signal=INT ${RUN_SECONDS} ./run.sh > /tmp/buddy/buddy-main.log 2>&1; rc=\$?; set -e; \
+        export LD_LIBRARY_PATH=lib/sherpa:lib:\${LD_LIBRARY_PATH:-}; \
+        [ -f setup.bash ] && . setup.bash 2>/dev/null; \
+        set -a; . etc/buddy.env 2>/dev/null; set +a; \
+        timeout --signal=INT ${RUN_SECONDS} ./bin/buddy_main --base-dir . > /tmp/buddy/buddy-main.log 2>&1; rc=\$?; \
         if [ \$rc -eq 124 ] || [ \$rc -eq 130 ]; then rc=0; fi; \
-        pkill -f '/opt/buddy/bin/buddy_main' >/dev/null 2>&1 || true; \
-        pkill -f '/output/opt/buddy/bin/buddy_main' >/dev/null 2>&1 || true; \
         echo \$rc > /tmp/buddy/buddy-main.status; \
         tail -n 80 /tmp/buddy/buddy-main.log"
     run_ssh_rc=$?
@@ -500,5 +462,5 @@ else
     fi
 fi
 
-log_stage "Step 5/5: Done"
+log_stage "Step 4/4: Done"
 log_ok "Workflow completed"

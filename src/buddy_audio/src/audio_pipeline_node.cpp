@@ -136,9 +136,9 @@ void AudioPipelineNode::capture_loop() {
         if (preprocessor_ && preprocessor_->is_enabled()) {
             preprocess = preprocessor_->process_capture_chunk(&chunk, kws_enabled_);
             if (diag_chunk_index % 10 == 0) {
-                RCLCPP_INFO(get_logger(),
-                            "[ASR_DIAG] capture chunk=%zu raw_rms=%.5f post_rms=%.5f preprocess_voice=%d pass=%d "
-                            "cooldown=%d wake_guard=%d kws=%d",
+                RCLCPP_DEBUG(get_logger(),
+                             "[ASR_DIAG] capture chunk=%zu raw_rms=%.5f post_rms=%.5f preprocess_voice=%d pass=%d "
+                             "cooldown=%d wake_guard=%d kws=%d",
                             diag_chunk_index,
                             raw_rms,
                             rms_of(chunk),
@@ -158,8 +158,8 @@ void AudioPipelineNode::capture_loop() {
                 continue;
             }
         } else if (diag_chunk_index % 10 == 0) {
-            RCLCPP_INFO(get_logger(),
-                        "[ASR_DIAG] capture chunk=%zu raw_rms=%.5f preprocess=off cooldown=%d wake_guard=%d kws=%d",
+            RCLCPP_DEBUG(get_logger(),
+                         "[ASR_DIAG] capture chunk=%zu raw_rms=%.5f preprocess=off cooldown=%d wake_guard=%d kws=%d",
                         diag_chunk_index,
                         raw_rms,
                         cooldown_chunks_remaining_.load(),

@@ -1,0 +1,19 @@
+[Unit]
+Description=Buddy Robot LLM Service (Python FastAPI on :8002)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=buddy
+Group=buddy
+EnvironmentFile=-/opt/buddy/etc/buddy.env
+ExecStart=/opt/buddy/scripts/start_llm_server.sh -f
+Restart=on-failure
+RestartSec=3
+StartLimitIntervalSec=60
+StartLimitBurst=5
+WorkingDirectory=/opt/buddy
+
+[Install]
+WantedBy=multi-user.target

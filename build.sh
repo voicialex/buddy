@@ -6,12 +6,14 @@ DOCKER_DIR="$ROOT_DIR/docker"
 
 usage() {
   cat <<'EOF'
-Usage: ./build.sh [-t|--arch x86|arm64] [-d|--device cpu|gpu|npu] [--ros-distro humble|jazzy] [-c] [-p] [-v VERSION] [colcon args...]
+Usage: ./build.sh [-t|--arch x86|arm64] [-d|--device cpu|gpu|npu] [--ros-distro humble|jazzy] [-j N] [-c] [-p] [-v VERSION] [colcon args...]
 
 Options:
   -t, --arch TARGET   x86 (default) or arm64
   -d, --device DEV    cpu (default), gpu (CUDA), or npu (RKNN)
   --ros-distro DIST   humble (default) or jazzy — ROS 2 distro + base image
+  --all               Parallel build all 4 combos (arm64/x86 × humble/jazzy)
+  -j N        Parallel workers (default: \$(nproc), or BUDDY_PARALLEL_WORKERS env)
   -c          Clean build
   -p, --package       x86 only: package .deb after build (default: skip)
   -v VER      Deb version (default: 1.0.0)
@@ -35,6 +37,7 @@ Examples:
   ./build.sh -t arm64 -c            # arm64 force rebuild (~3min, ccache still helps)
   ./build.sh -t arm64 -v 2.0.0     # arm64 custom version
   ./build.sh --packages-select X    # x86 humble single package (native only)
+  ./build.sh --all                 # 4-way parallel: arm64/x86 × humble/jazzy
 
 Optional service packages (LLM, ASR, TTS) — built automatically with arm64:
   output/<distro>/aarch64/services/buddy-service-llm_<ver>_aarch64.tar.gz
@@ -44,7 +47,7 @@ Optional service packages (LLM, ASR, TTS) — built automatically with arm64:
 One-command board deploy/run (incremental runtime/models/services):
   ./scripts/deploy_run_arm64_npu.sh --ros-distro ${ROS2_DISTRO:-humble}
 
-Env: BUDDY_PARALLEL_WORKERS=N (default: all cores)
+Env: BUDDY_PARALLEL_WORKERS=N (overridden by -j)
 
 arm64 cache cleanup:
   docker builder prune --filter type=exec.cachemount   # ccache only
@@ -67,7 +70,7 @@ build_docker() {
   local prebuilt_arch="$2" # aarch64 | x86_64
   local deb_arch="$3"      # arm64 | amd64
   local version="${VERSION:-1.0.0}"
-  local parallel="${BUDDY_PARALLEL_WORKERS:-$(nproc)}"
+  local parallel="${PARALLEL}"
   local output_dir="$ROOT_DIR/output/${ROS2_DISTRO}/${prebuilt_arch}/deb"
   local deb_file="$output_dir/buddy-robot_${version}_${deb_arch}_${DEVICE}.deb"
   local models_file="$output_dir/buddy-models_${version}_${DEVICE}.tar.gz"
@@ -173,18 +176,26 @@ build_docker() {
 
   if [[ "$deb_arch" == "arm64" ]]; then
     echo ""
-    echo "RK3588 deploy (recommended):"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Deploy"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "RK3588 deploy (recommended — one command):"
     echo "  ./scripts/deploy_run_arm64_npu.sh --ros-distro ${ROS2_DISTRO}"
     echo ""
-    echo "Manual (minimal, deb only):"
+    echo "Manual deploy (runtime first, then models):"
+    echo "  # 1. Deploy runtime"
     echo "  scp $deb_file work:~/"
-    echo "  ssh work 'cd ~ && rm -rf output/opt/buddy && dpkg -x buddy-robot_${version}_arm64_${DEVICE}.deb output && ~/output/opt/buddy/run.sh'"
+    echo "  ssh work 'cd ~ && dpkg -x buddy-robot_${version}_arm64_${DEVICE}.deb output'"
     if [[ -f "$models_file" ]]; then
-      echo ""
-      echo "Manual (models, only when models/ needs refresh):"
+      echo "  # 2. Deploy models directly into buddy/models"
       echo "  scp $models_file work:~/"
-      echo "  ssh work 'cd ~ && mkdir -p output/buddy-models-cache && tar xzf buddy-models_${version}_${DEVICE}.tar.gz -C output/buddy-models-cache && ln -sfn ~/output/buddy-models-cache ~/output/opt/buddy/models'"
+      echo "  ssh work 'cd ~ && tar xzf buddy-models_${version}_${DEVICE}.tar.gz -C output/opt/buddy/models'"
     fi
+    echo "  # 3. Switch engines to NPU"
+    echo "  ssh work 'cd ~/output/opt/buddy && ./scripts/switch_runtime.sh npu'"
+    echo "  # 4. Run"
+    echo "  ssh work '~/output/opt/buddy/run.sh'"
   fi
 }
 
@@ -317,6 +328,218 @@ build_x86() {
 }
 
 # ============================================================
+# Parallel build all 4 combos (arm64/x86 × humble/jazzy)
+# ============================================================
+prepare_all_prebuilt() {
+  echo "━━━ Step 1: Prepare prebuilt deps (serial) ━━━"
+
+  # 4 (arch, distro) combos — setup_prebuilt.sh is "skip if exists", but
+  # pre-checking avoids even invoking it when deps are already in place.
+  local combos=(
+    "aarch64|humble"
+    "aarch64|jazzy"
+    "x86_64|humble"
+    "x86_64|jazzy"
+  )
+  for combo in "${combos[@]}"; do
+    local arch distro
+    IFS='|' read -r arch distro <<< "$combo"
+    local ros2_setup="$ROOT_DIR/prebuilt/$arch/ros2_core/$distro/setup.bash"
+    if [[ -f "$ros2_setup" ]] \
+       && [[ -d "$ROOT_DIR/prebuilt/$arch/onnxruntime" ]] \
+       && [[ -d "$ROOT_DIR/prebuilt/$arch/sherpa-onnx" ]]; then
+      echo "  [SKIP] $arch/$distro (prebuilt ready)"
+      continue
+    fi
+    echo "  [..] Preparing $arch/$distro ..."
+    BUDDY_ROS2_DISTRO="$distro" "$ROOT_DIR/scripts/setup_prebuilt.sh" --arch "$arch"
+  done
+
+  # Third-party (OpenCV/libcurl) per arch — skip if already staged.
+  for arch in aarch64 x86_64; do
+    if [[ -f "$ROOT_DIR/prebuilt/$arch/opencv/lib/libopencv_core.so" ]]; then
+      echo "  [SKIP] thirdparty/$arch (already built)"
+      continue
+    fi
+    echo "  [..] Building thirdparty for $arch ..."
+    "$ROOT_DIR/scripts/build_thirdparty.sh" --arch "$arch"
+  done
+
+  echo ""
+}
+
+fmt_duration() {
+  local elapsed=$1
+  if [[ $elapsed -lt 60 ]]; then
+    printf '%ds' "$elapsed"
+  elif [[ $elapsed -lt 3600 ]]; then
+    printf '%dm%ds' $((elapsed / 60)) $((elapsed % 60))
+  else
+    printf '%dh%dm' $((elapsed / 3600)) $(((elapsed % 3600) / 60))
+  fi
+}
+
+build_all() {
+  local version="${VERSION:-1.0.0}"
+  local log_dir="$ROOT_DIR/output/.build-all-logs"
+  mkdir -p "$log_dir"
+  rm -f "$log_dir"/*.log 2>/dev/null || true
+
+  # Step 1: serial prebuilt prep — guarantees all deps ready before parallel
+  # builds start, so build_docker/build_x86's internal checks all skip.
+  prepare_all_prebuilt
+
+  echo "━━━ Step 2: Parallel build ×4 (device=$DEVICE, ver=$version) ━━━"
+  echo "  Logs: $log_dir/<label>.log   [Ctrl-C to abort]"
+  echo ""
+
+  local combos=(
+    "arm64-humble|arm64|humble"
+    "arm64-jazzy|arm64|jazzy"
+    "x86-humble|x86|humble"
+    "x86-jazzy|x86|jazzy"
+  )
+
+  local pids=() labels=() logs=() statuses=() start_times=() end_times=()
+
+  for combo in "${combos[@]}"; do
+    local label target distro
+    IFS='|' read -r label target distro <<< "$combo"
+    local log="$log_dir/${label}.log"
+
+    (
+      export ROS2_DISTRO="$distro"
+      if [[ "$target" == "arm64" ]]; then
+        build_docker arm64 aarch64 arm64 > "$log" 2>&1
+      else
+        build_x86 > "$log" 2>&1
+      fi
+    ) &
+    pids+=($!)
+    labels+=("$label")
+    logs+=("$log")
+    statuses+=("running")
+    start_times+=("$(date +%s)")
+    end_times+=("")
+  done
+
+  # Terminal UI: hide cursor, restore on exit
+  if [[ -t 1 ]]; then
+    tput civis 2>/dev/null || true
+    trap 'tput cnorm 2>/dev/null || true; kill $(jobs -p) 2>/dev/null; echo "[ABORT]"; exit 130' INT
+    trap 'tput cnorm 2>/dev/null || true' EXIT
+  fi
+
+  local cols
+  cols=$(tput cols 2>/dev/null || echo 80)
+  local log_lines=$(( (cols - 8) / 2 ))   # rough width budget per side
+  [[ $log_lines -gt 120 ]] && log_lines=120
+  [[ $log_lines -lt 40 ]] && log_lines=40
+
+  while true; do
+    # Detect finished builds (non-blocking)
+    local all_done=true
+    for i in "${!pids[@]}"; do
+      if [[ "${statuses[$i]}" == "running" ]] && ! kill -0 "${pids[$i]}" 2>/dev/null; then
+        if wait "${pids[$i]}" 2>/dev/null; then
+          statuses[$i]="ok"
+        else
+          statuses[$i]="fail"
+        fi
+        end_times[$i]="$(date +%s)"
+      fi
+      [[ "${statuses[$i]}" == "running" ]] && all_done=false
+    done
+
+    # Move cursor to top, redraw
+    tput cup 0 0 2>/dev/null || clear
+    printf '━━━ Parallel build ×4 (device=%s, ver=%s) ━━━' "$DEVICE" "$version"
+    tput el 2>/dev/null || true; echo ""
+    printf '  Logs: %s/<label>.log   [Ctrl-C to abort]' "$log_dir"
+    tput el 2>/dev/null || true; echo ""
+    tput el 2>/dev/null || true; echo ""
+
+    for i in "${!labels[@]}"; do
+      local icon color
+      case "${statuses[$i]}" in
+        running) icon="[..]"; color=$'\033[33m' ;;
+        ok)      icon="[OK]"; color=$'\033[32m' ;;
+        fail)    icon="[X]";  color=$'\033[31m' ;;
+      esac
+      local reset=$'\033[0m'
+
+      # Elapsed time: live while running, frozen at completion
+      local now elapsed time_str
+      now=$(date +%s)
+      if [[ -z "${end_times[$i]}" ]]; then
+        elapsed=$(( now - ${start_times[$i]} ))
+      else
+        elapsed=$(( ${end_times[$i]} - ${start_times[$i]} ))
+      fi
+      time_str=$(fmt_duration "$elapsed")
+
+      # Header line: "── [..] label 1m23s ────..." padded to terminal width
+      # visible: "── " (3) + icon + " " (1) + label + " " (1) + time_str + " " (1)
+      local visible_len=$(( 6 + ${#icon} + ${#labels[$i]} + ${#time_str} ))
+      local pad=$(( cols - visible_len ))
+      [[ $pad -lt 4 ]] && pad=4
+      local dashes
+      dashes=$(printf '─%.0s' $(seq 1 "$pad"))
+      printf '── %s%s%s %s %s %s' "$color" "$icon" "$reset" "${labels[$i]}" "$time_str" "$dashes"
+      tput el 2>/dev/null || true
+      echo ""
+
+      # Last 8 lines of log — convert \r to \n first (docker progress lines)
+      local lines=()
+      if [[ -f "${logs[$i]}" ]]; then
+        while IFS= read -r line; do
+          lines+=("$line")
+        done < <(tr '\r' '\n' < "${logs[$i]}" 2>/dev/null | tail -8)
+      fi
+      while [[ ${#lines[@]} -lt 8 ]]; do lines+=(""); done
+
+      local max_len=$((cols - 4))
+      for line in "${lines[@]}"; do
+        # Strip ANSI color codes
+        line="${line//$'\033('[0-9;]*m/}"
+        if [[ ${#line} -gt $max_len ]]; then
+          line="${line:0:$((max_len-3))}..."
+        fi
+        printf '  %s' "$line"
+        tput el 2>/dev/null || true
+        echo ""
+      done
+
+      # Blank line between blocks (not after the last one)
+      if [[ $i -lt $((${#labels[@]} - 1)) ]]; then
+        echo ""
+      fi
+    done
+
+    tput ed 2>/dev/null || true   # clear to end of screen
+
+    if $all_done; then
+      break
+    fi
+    sleep 1
+  done
+
+  # Summary
+  echo ""
+  local failed=()
+  for i in "${!labels[@]}"; do
+    [[ "${statuses[$i]}" == "fail" ]] && failed+=("${labels[$i]}")
+  done
+
+  if [[ ${#failed[@]} -gt 0 ]]; then
+    echo "[FAIL] ${#failed[@]}/4 builds failed: ${failed[*]}"
+    echo "[HINT] tail -50 $log_dir/${failed[0]}.log"
+    return 1
+  fi
+  echo "[OK] All 4 builds passed"
+}
+
+# ============================================================
 # Parse args
 # ============================================================
 TARGET="x86"
@@ -324,16 +547,20 @@ DEVICE="cpu"
 ROS2_DISTRO="humble"
 CLEAN=false
 PACKAGE=false
+BUILD_ALL=false
 VERSION="1.0.0"
+PARALLEL="${BUDDY_PARALLEL_WORKERS:-$(nproc)}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -t|--arch) TARGET="$2"; shift 2 ;;
     -d|--device) DEVICE="$2"; shift 2 ;;
     --ros-distro) ROS2_DISTRO="$2"; shift 2 ;;
+    --all) BUILD_ALL=true; shift ;;
     -c) CLEAN=true; shift ;;
     -p|--package) PACKAGE=true; shift ;;
     -v) VERSION="$2"; shift 2 ;;
+    -j) PARALLEL="$2"; shift 2 ;;
     -h|--help) usage ;;
     arm64|aarch64) TARGET="arm64"; shift ;;
     x86|x86_64) TARGET="x86"; shift ;;
@@ -346,6 +573,11 @@ case "$ROS2_DISTRO" in
   humble|jazzy) ;;
   *) die "Unknown ROS 2 distro: $ROS2_DISTRO" "Use --ros-distro humble or jazzy" ;;
 esac
+
+if [[ "$BUILD_ALL" == true ]]; then
+  build_all
+  exit $?
+fi
 
 case "$TARGET" in
   x86|x86_64)

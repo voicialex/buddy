@@ -1,6 +1,5 @@
 brain:
   ros__parameters:
-    system_prompt_path: "params/system_prompt.txt"
     max_history_turns: 10
     session_timeout_seconds: 60.0
     speaking_watchdog_seconds: 60.0

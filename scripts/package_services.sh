@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Suppress pip's PEP 503 HTML page deprecation spam (aliyun mirror format)
+export PYTHONWARNINGS=ignore::DeprecationWarning
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 VERSION="1.0.0"
@@ -96,7 +99,7 @@ build_llm_pkg() {
 
   # Download all dependencies as wheels for target arch (incl. transitive deps)
   PIP_INDEX="https://mirrors.aliyun.com/pypi/simple/"
-  pip download \
+  pip download --quiet \
     -i "$PIP_INDEX" --trusted-host mirrors.aliyun.com \
     "${plat_flags[@]}" \
     --python-version "$PYTHON_VER" \
@@ -173,7 +176,7 @@ ACTIVATE_EOF
     local rkllm_venv="$tmp/opt/buddy/rkllm_server/.venv"
     local rkllm_site="$rkllm_venv/lib/python${PYTHON_VER}/site-packages"
     mkdir -p "$rkllm_wheels" "$rkllm_venv/bin" "$rkllm_site"
-    pip download -i "$PIP_INDEX" --trusted-host mirrors.aliyun.com \
+    pip download --quiet -i "$PIP_INDEX" --trusted-host mirrors.aliyun.com \
       "${plat_flags[@]}" --python-version "$PYTHON_VER" --only-binary=:all: \
       -r "$tmp/opt/buddy/rkllm_server/requirements.txt" -d "$rkllm_wheels/" || echo "[WARN] rkllm flask wheels download failed"
     printf '[virtualenv]\nhome = /usr/bin\ninclude-system-site-packages = true\nversion = %s\n' "$PYTHON_VER" \
@@ -191,7 +194,7 @@ ACTIVATE_EOF
   fi
 
   chmod 755 "$tmp/opt/buddy/scripts/start_llm_server.sh" "$tmp/opt/buddy/scripts/common.sh"
-  tar czf "$OUT_DIR/buddy-service-llm_${VERSION}_${ARCH}.tar.gz" -C "$tmp" .
+  tar czf "$OUT_DIR/buddy-service-llm_${VERSION}_${ARCH}.tar.gz" -C "$tmp/opt/buddy" .
   rm -rf "$tmp"
 }
 
@@ -208,7 +211,7 @@ build_funasr_pkg() {
   cp -fP "$PREBUILT_DIR/funasr/lib/"*.so* "$tmp/opt/buddy/lib/funasr/" 2>/dev/null || true
   cp -fP "$PREBUILT_DIR/onnxruntime/lib/"*.so* "$tmp/opt/buddy/lib/funasr/" 2>/dev/null || true
 
-  tar czf "$OUT_DIR/buddy-service-funasr_${VERSION}_${ARCH}.tar.gz" -C "$tmp" .
+  tar czf "$OUT_DIR/buddy-service-funasr_${VERSION}_${ARCH}.tar.gz" -C "$tmp/opt/buddy" .
   rm -rf "$tmp"
 }
 
@@ -222,7 +225,7 @@ build_chattts_pkg() {
   rm -rf "$tmp/opt/buddy/services/tts/.venv" "$tmp/opt/buddy/services/tts/__pycache__"
   chmod 755 "$tmp/opt/buddy/scripts/start_tts_server.sh"
 
-  tar czf "$OUT_DIR/buddy-service-chattts_${VERSION}_${ARCH}.tar.gz" -C "$tmp" .
+  tar czf "$OUT_DIR/buddy-service-chattts_${VERSION}_${ARCH}.tar.gz" -C "$tmp/opt/buddy" .
   rm -rf "$tmp"
 }
 

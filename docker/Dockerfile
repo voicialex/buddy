@@ -14,6 +14,7 @@ FROM ubuntu:22.04 AS humble-base
 ARG TARGET_ARCH
 ARG DEVICE
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONWARNINGS=ignore::DeprecationWarning
 SHELL ["/bin/bash", "-c"]
 
 # --- apt sources ---
@@ -26,7 +27,9 @@ RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
       echo "deb [arch=arm64] http://mirrors.aliyun.com/ubuntu-ports jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list; \
     fi
 
-RUN apt-get update && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
       build-essential cmake python3-pip python3-venv python3-dev python3-numpy \
       pkg-config python3-lark python3-yaml python3-empy python3-catkin-pkg \
@@ -41,10 +44,10 @@ RUN apt-get update && \
         libpython3-dev:arm64 \
         libasound2-dev:arm64 libwebrtc-audio-processing-dev:arm64 \
         libssl-dev:arm64; \
-    fi \
-    && rm -rf /var/lib/apt/lists/*
+    fi
 
-RUN pip3 install --no-cache-dir colcon-common-extensions vcstool 'empy<4' lark
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install colcon-common-extensions vcstool 'empy<4' lark
 
 # Toolchain file (arm64 only)
 COPY docker/toolchain-aarch64.cmake /opt/toolchain-aarch64.cmake
@@ -83,6 +86,7 @@ FROM ubuntu:24.04 AS jazzy-base
 ARG TARGET_ARCH
 ARG DEVICE
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONWARNINGS=ignore::DeprecationWarning
 SHELL ["/bin/bash", "-c"]
 
 # --- apt sources (24.04 deb822 format) ---
@@ -92,7 +96,9 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/so
     && echo "deb [arch=arm64] http://mirrors.aliyun.com/ubuntu-ports noble-updates main restricted universe multiverse" >> /etc/apt/sources.list.d/arm64.list \
     && sed -i 's|^Types: deb|Types: deb\nArchitectures: amd64|' /etc/apt/sources.list.d/ubuntu.sources
 
-RUN apt-get update && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
       build-essential cmake python3-pip python3-venv python3-dev python3-numpy pkg-config \
       python3-lark python3-yaml python3-empy python3-catkin-pkg \
@@ -108,10 +114,10 @@ RUN apt-get update && \
         libyaml-cpp-dev:arm64 \
         libasound2-dev:arm64 libwebrtc-audio-processing-dev:arm64; \
     fi \
-    && rm -rf /var/lib/apt/lists/* \
     && rm -f /usr/lib/python3*/EXTERNALLY-MANAGED
 
-RUN pip3 install --break-system-packages --no-cache-dir colcon-common-extensions vcstool
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages colcon-common-extensions vcstool
 
 # Toolchain file (arm64 only)
 COPY docker/toolchain-aarch64.cmake /opt/toolchain-aarch64.cmake
@@ -285,10 +291,11 @@ COPY scripts/switch_runtime.sh opt/buddy/scripts/switch_runtime.sh
 COPY services/llm/ opt/buddy/services/llm/
 
 COPY docker/buildvenv.sh /tmp/buildvenv.sh
-RUN BUDDY_PYTHON_VER=3.10 bash /tmp/buildvenv.sh && rm /tmp/buildvenv.sh
+RUN --mount=type=cache,target=/root/.cache/pip BUDDY_PYTHON_VER=3.10 bash /tmp/buildvenv.sh && rm /tmp/buildvenv.sh
 
 COPY docker/rkllm_server/ /tmp/rkllm_server/
-RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ "$TARGET_ARCH" = "arm64" ]; then \
       cp -a /tmp/rkllm_server/. opt/buddy/rkllm_server/; \
     else \
       mkdir -p opt/buddy/rkllm_server; \
@@ -298,13 +305,13 @@ RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
            opt/buddy/rkllm_server/__pycache__ && \
     find opt/buddy/services/llm -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true && \
     python3.10 -m venv opt/buddy/rkllm_server/.venv && \
-    opt/buddy/rkllm_server/.venv/bin/pip install --no-cache-dir -r opt/buddy/rkllm_server/requirements.txt && \
+    opt/buddy/rkllm_server/.venv/bin/pip install --quiet -r opt/buddy/rkllm_server/requirements.txt && \
     find opt/buddy/rkllm_server/.venv -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
     find opt/buddy/rkllm_server/.venv -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true && \
     find opt/buddy/rkllm_server/.venv -name "*.pyc" -delete 2>/dev/null || true && \
     sha256sum opt/buddy/rkllm_server/requirements.txt | awk '{print $1}' > opt/buddy/rkllm_server/.venv/.requirements.sha256 && \
     touch opt/buddy/rkllm_server/.venv/.prebuilt && \
-    if [ "$TARGET_ARCH" = "arm64" ]; then \
+    if [ -d /opt/prebuilt/rkllm/lib ]; then \
       mkdir -p opt/buddy/rkllm_server/lib && \
       cp -a /opt/prebuilt/rkllm/lib/*.so* opt/buddy/rkllm_server/lib/; \
     fi && \
@@ -501,10 +508,11 @@ COPY scripts/switch_runtime.sh opt/buddy/scripts/switch_runtime.sh
 COPY services/llm/ opt/buddy/services/llm/
 
 COPY docker/buildvenv.sh /tmp/buildvenv.sh
-RUN BUDDY_PYTHON_VER=3.12 bash /tmp/buildvenv.sh && rm /tmp/buildvenv.sh
+RUN --mount=type=cache,target=/root/.cache/pip BUDDY_PYTHON_VER=3.12 bash /tmp/buildvenv.sh && rm /tmp/buildvenv.sh
 
 COPY docker/rkllm_server/ /tmp/rkllm_server/
-RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ "$TARGET_ARCH" = "arm64" ]; then \
       cp -a /tmp/rkllm_server/. opt/buddy/rkllm_server/; \
     else \
       mkdir -p opt/buddy/rkllm_server; \
@@ -514,13 +522,13 @@ RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
            opt/buddy/rkllm_server/__pycache__ && \
     find opt/buddy/services/llm -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true && \
     python3.12 -m venv opt/buddy/rkllm_server/.venv && \
-    opt/buddy/rkllm_server/.venv/bin/pip install --no-cache-dir -r opt/buddy/rkllm_server/requirements.txt && \
+    opt/buddy/rkllm_server/.venv/bin/pip install --quiet -r opt/buddy/rkllm_server/requirements.txt && \
     find opt/buddy/rkllm_server/.venv -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
     find opt/buddy/rkllm_server/.venv -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true && \
     find opt/buddy/rkllm_server/.venv -name "*.pyc" -delete 2>/dev/null || true && \
     sha256sum opt/buddy/rkllm_server/requirements.txt | awk '{print $1}' > opt/buddy/rkllm_server/.venv/.requirements.sha256 && \
     touch opt/buddy/rkllm_server/.venv/.prebuilt && \
-    if [ "$TARGET_ARCH" = "arm64" ]; then \
+    if [ -d /opt/prebuilt/rkllm/lib ]; then \
       mkdir -p opt/buddy/rkllm_server/lib && \
       cp -a /opt/prebuilt/rkllm/lib/*.so* opt/buddy/rkllm_server/lib/; \
     fi && \

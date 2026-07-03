@@ -59,6 +59,7 @@ std::unique_ptr<TtsBackend> create_melo_rknn_tts_backend();
 
 inline std::unique_ptr<TtsBackend> create_tts_backend(
     const std::string& mode, const std::string& engine, const std::string& runtime = "onnxruntime") {
+    (void)runtime;  // reserved for future backend selection
     if (mode == "server") return create_http_tts_backend();
     if (engine == "melo-rknn") {
         return create_melo_rknn_tts_backend();

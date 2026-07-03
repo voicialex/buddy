@@ -26,6 +26,36 @@ if [[ -x "$DIR/scripts/status.sh" ]]; then
     "$DIR/scripts/status.sh" --module || true
 fi
 
+# ── Audio hardware init ────────────────────────────────────────────
+_init_audio() {
+    local cdev card
+    for card in /dev/snd/controlC*; do
+        [ -e "$card" ] || continue
+        cdev="${card##*controlC}"
+        local info
+        info="$(amixer -c "$cdev" info 2>/dev/null || true)"
+
+        # RT5616 onboard codec (built-in mic/speaker)
+        if echo "$info" | grep -qi "rt5616"; then
+            amixer -c "$cdev" cset numid=23 on,on >/dev/null 2>&1 || true
+            amixer -c "$cdev" set "IN1 Boost" 1 >/dev/null 2>&1 || true
+            amixer -c "$cdev" set "ADC Boost" 1 >/dev/null 2>&1 || true
+            echo "[INFO] Audio init: RT5616 card=$cdev capture=on IN1=1 ADC=1"
+            continue
+        fi
+
+        # USB sound card — max out PCM + Mic, disable auto-gain
+        if echo "$info" | grep -qi "USB"; then
+            amixer -c "$cdev" set "PCM" 100% on >/dev/null 2>&1 || true
+            amixer -c "$cdev" set "Mic" 100% on >/dev/null 2>&1 || true
+            amixer -c "$cdev" set "Auto Gain Control" off >/dev/null 2>&1 || true
+            echo "[INFO] Audio init: USB card=$cdev PCM=max Mic=max AGC=off"
+            continue
+        fi
+    done
+}
+_init_audio
+
 echo "[INFO] Launching buddy_main..."
 cd "$DIR"
 exec "$DIR/bin/buddy_main" --base-dir "$DIR"
