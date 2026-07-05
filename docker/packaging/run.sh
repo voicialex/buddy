@@ -56,6 +56,9 @@ _init_audio() {
 }
 _init_audio
 
+# Redirect ROS 2 logs to /tmp/buddy
+export ROS_HOME=/tmp/buddy
+
 echo "[INFO] Launching buddy_main..."
 cd "$DIR"
 exec "$DIR/bin/buddy_main" --base-dir "$DIR"

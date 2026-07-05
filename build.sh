@@ -544,7 +544,7 @@ build_all() {
 # ============================================================
 TARGET="x86"
 DEVICE="cpu"
-ROS2_DISTRO="humble"
+ROS2_DISTRO="jazzy"
 CLEAN=false
 PACKAGE=false
 BUILD_ALL=false

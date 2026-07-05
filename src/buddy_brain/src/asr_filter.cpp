@@ -32,15 +32,33 @@ bool EchoSubstringAsrFilter::should_filter(
     if (static_cast<int>(asr_norm.size()) < min_chars_) {
         return false;
     }
-    if (last_norm.find(asr_norm) == std::string::npos) {
-        return false;
+    // Exact substring match
+    if (last_norm.find(asr_norm) != std::string::npos) {
+        if (reason != nullptr) *reason = "ASR echo filtered (exact substring)";
+        return true;
+    }
+    // Fuzzy: character overlap ratio >= 70%
+    if (static_cast<int>(asr_norm.size()) >= min_chars_) {
+        int overlap = 0;
+        std::string tmp = last_norm;
+        for (char c : asr_norm) {
+            auto pos = tmp.find(c);
+            if (pos != std::string::npos) {
+                ++overlap;
+                tmp[pos] = '\0';  // mark used
+            }
+        }
+        if (overlap * 100 / static_cast<int>(asr_norm.size()) >= 60) {
+            if (reason != nullptr) {
+                std::ostringstream ss;
+                ss << "ASR echo filtered (fuzzy overlap=" << overlap
+                   << "/" << asr_norm.size() << ")";
+                *reason = ss.str();
+            }
+            return true;
+        }
     }
 
-    if (reason != nullptr) {
-        std::ostringstream ss;
-        ss << "ASR echo filtered (elapsed=" << std::fixed << std::setprecision(2) << elapsed << "s)";
-        *reason = ss.str();
-    }
-    return true;
+    return false;
 }
 

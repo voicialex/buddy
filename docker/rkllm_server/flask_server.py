@@ -430,7 +430,7 @@ if __name__ == "__main__":
                         
                         if message['role'] == 'system':
                             system_prompt = message['content']
-                            print('skip system messages')
+                            recevied_messages.append(message)
                             continue
 
                         if message['role'] == 'assistant':
@@ -445,7 +445,14 @@ if __name__ == "__main__":
                                 continue
                             
                         if message['role'] == 'user':
-                            input_prompt = message['content']
+                            if system_prompt:
+                                input_prompt = (
+                                    "<|im_start|>system\n" + system_prompt + "<|im_end|>\n"
+                                    "<|im_start|>user\n" + message['content'] + "<|im_end|>\n"
+                                    "<|im_start|>assistant\n"
+                                )
+                            else:
+                                input_prompt = message['content']
                         elif message['role'] == 'tool':
                             input_prompt = json.dumps(input_prompt)
                             recevied_messages.clear()
@@ -503,7 +510,7 @@ if __name__ == "__main__":
 
                         if message['role'] == 'system':
                             system_prompt = message['content']
-                            print('skip system messages')
+                            recevied_messages.append(message)
                             continue
 
                         if message['role'] == 'assistant':
@@ -518,7 +525,14 @@ if __name__ == "__main__":
                                 continue
 
                         if message['role'] == 'user':
-                            input_prompt = message['content']
+                            if system_prompt:
+                                input_prompt = (
+                                    "<|im_start|>system\n" + system_prompt + "<|im_end|>\n"
+                                    "<|im_start|>user\n" + message['content'] + "<|im_end|>\n"
+                                    "<|im_start|>assistant\n"
+                                )
+                            else:
+                                input_prompt = message['content']
                         elif message['role'] == 'tool':
                             input_prompt = json.dumps(input_prompt)
                             recevied_messages.clear()

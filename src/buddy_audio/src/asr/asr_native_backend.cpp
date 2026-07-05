@@ -60,7 +60,7 @@ public:
             if (!has_voice_) {
                 pipeline_.reset();
                 utterance_samples_.clear();
-                RCLCPP_INFO(logger_, "[ASR_DIAG] utterance_start rms=%.5f", rms);
+                RCLCPP_DEBUG(logger_, "[ASR_DIAG] utterance_start rms=%.5f", rms);
             }
             has_voice_ = true;
             silence_chunks_ = 0;
@@ -113,9 +113,9 @@ public:
         result.text = pending_text_;
         result.is_final = !result.text.empty();
         if (result.is_final) {
-            RCLCPP_INFO(logger_, "[ASR_DIAG] final_result=%s", result.text.c_str());
+            RCLCPP_DEBUG(logger_, "[ASR_DIAG] final_result=%s", result.text.c_str());
         } else {
-            RCLCPP_INFO(logger_, "[ASR_DIAG] final_result empty");
+            RCLCPP_DEBUG(logger_, "[ASR_DIAG] final_result empty");
         }
         pending_text_.clear();
         utterance_samples_.clear();

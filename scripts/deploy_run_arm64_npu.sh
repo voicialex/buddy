@@ -8,7 +8,7 @@ source "$SCRIPT_DIR/common.sh"
 BOARD_HOST="work"
 BOARD_USER="pi"
 BOARD_PASS="pi"
-ROS2_DISTRO="humble"
+ROS2_DISTRO="jazzy"
 VERSION="1.0.0"
 BOARD_DEB_PATH="~/buddy-robot_${VERSION}_arm64_npu.deb"
 BOARD_OUTPUT_BASE="~/output"
@@ -370,6 +370,7 @@ log_stage "Step 2/4: Apply runtime/models/services on board"
     fi; \
     cd ${BOARD_OUTPUT_BASE}/opt/buddy; \
     ./scripts/switch_runtime.sh npu; \
+    rm -rf \"\$SVC_CACHE_BASE\"; \
     echo '[OK] deploy ready at ${BOARD_OUTPUT_BASE}/opt/buddy'"
 log_ok "Deploy complete"
 
