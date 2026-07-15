@@ -4,6 +4,7 @@
 #include <buddy_interfaces/msg/tts_control.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/empty.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <string>
@@ -51,10 +52,12 @@ private:
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr wake_word_pub_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr asr_text_pub_;
     rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr tts_done_pub_;
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr voice_activity_pub_;
     rclcpp::Subscription<buddy_interfaces::msg::Sentence>::SharedPtr sentence_sub_;
     rclcpp::Subscription<buddy_interfaces::msg::TtsControl>::SharedPtr tts_control_sub_;
 
     int sample_rate_ = 16000;
     bool kws_enabled_ = true;
+    bool vad_publish_enabled_ = false;
     std::string current_turn_id_;
 };

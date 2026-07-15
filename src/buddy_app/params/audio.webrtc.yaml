@@ -2,22 +2,25 @@ audio:
   ros__parameters:
     preprocess:
       webrtc:
-        enable: false
+        enable: true
         vad:
-          enable: false
+          enable: true
           gate:
-            enable: false
+            enable: false        # brain 端去抖，gate 关避免丢 VAD 信号
             with_kws: false
-          likelihood: 2          # 0..3
-          frame_ms: 10           # 10/20/30
+          # VAD 敏感度：0=极低 1=低 2=中 3=高（kHighLikelihood）。
+          # 3 最严格，假阳性最少，适合 barge-in 场景；
+          # 环境噪音大或检测不到说话时降到 2。
+          likelihood: 3
+          frame_ms: 10
           min_voice_frames: 2
           hangover_frames: 18
         ns:
-          enable: false
-          level: 2               # 0..3
+          enable: true
+          level: 2
         agc:
-          enable: false
-          mode: 2                # 0:adaptive_analog 1:adaptive_digital 2:fixed_digital
+          enable: true
+          mode: 2
           target_level_dbfs: 6
           compression_gain_db: 6
           limiter_enable: true
@@ -25,6 +28,11 @@ audio:
           analog_level_max: 255
           stream_analog_level: 127
         aec:
-          enable: false
-          suppression_level: 1   # 0..2
-          stream_delay_ms: 80
+          enable: true
+          suppression_level: 1
+          # near(mic) 与 far(speaker) 信号的时间延迟。
+          # ALSA playback buffer + speaker->mic 物理延迟实测 > 80ms，
+          # 80ms 时 AEC 找不到回声对应关系，残留 post_rms 0.002-0.01 触发 VAD 误报。
+          # 120ms 匹配实际延迟，回声被消除干净，post_rms 降到底噪级别。
+          # 若仍误触发，尝试 100/150；若消除过度（用户说话被吞），降回 80。
+          stream_delay_ms: 120

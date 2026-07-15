@@ -92,6 +92,10 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State&) {
     declare_parameter("speaking_watchdog_seconds", 60.0);
     declare_parameter("fallback_sentence", "抱歉，我现在无法回答");
     declare_parameter("wake_phrase_fallbacks", std::vector<std::string>{"嘿巴迪"});
+    declare_parameter("vad_interrupt.enabled", false);
+    declare_parameter("vad_interrupt.voice_frame_threshold", 5);
+    vad_interrupt_enabled_ = get_parameter("vad_interrupt.enabled").as_bool();
+    vad_interrupt_threshold_ = get_parameter("vad_interrupt.voice_frame_threshold").as_int();
 
     const int max_history_turns = get_parameter("max_history_turns").as_int();
     session_timeout_seconds_ = get_parameter("session_timeout_seconds").as_double();
@@ -158,6 +162,8 @@ CallbackReturn BrainNode::on_configure(const rclcpp_lifecycle::State&) {
         "/vision/emotion/result", 10, std::bind(&BrainNode::on_emotion, this, std::placeholders::_1));
     tts_done_sub_ = create_subscription<std_msgs::msg::Empty>(
         "/audio/tts_done", 10, std::bind(&BrainNode::on_tts_done, this, std::placeholders::_1));
+    voice_activity_sub_ = create_subscription<std_msgs::msg::Bool>(
+        "/audio/voice_activity", 10, std::bind(&BrainNode::on_voice_activity, this, std::placeholders::_1));
 
     // Capture client on separate callback group to avoid blocking service responses
     capture_client_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
@@ -190,6 +196,7 @@ CallbackReturn BrainNode::on_cleanup(const rclcpp_lifecycle::State&) {
     asr_text_sub_.reset();
     emotion_sub_.reset();
     tts_done_sub_.reset();
+    voice_activity_sub_.reset();
     image_capture_.reset_client();
     capture_client_group_.reset();
     session_.clear();
@@ -218,7 +225,7 @@ void BrainNode::on_wake_word(const std_msgs::msg::String& msg) {
     }
     if (state_ != State::IDLE) {
         RCLCPP_INFO(get_logger(), "Wake word: barge-in, cancelling current turn");
-        cancel_current_turn();
+        cancel_current_turn("wake-barge-in");
     }
     RCLCPP_INFO(get_logger(), "Wake word detected");
     session_.metrics().wake_at = std::chrono::steady_clock::now();
@@ -269,13 +276,16 @@ void BrainNode::on_asr_text(const std_msgs::msg::String& msg) {
         transition(State::LISTENING);
     } else if (state_ != State::LISTENING) {
         RCLCPP_INFO(get_logger(), "ASR barge-in, cancelling current turn");
-        cancel_current_turn();
+        cancel_current_turn("asr-barge-in");
         transition(State::LISTENING);
     }
-    RCLCPP_INFO(get_logger(), "ASR: %s", msg.data.c_str());
+    RCLCPP_INFO(get_logger(), "ASR accepted: %s", msg.data.c_str());
     reset_session_timer();
 
     session_.metrics().asr_at = std::chrono::steady_clock::now();
+    if (session_.metrics().wake_at == TurnMetrics::TimePoint{}) {
+        session_.metrics().wake_at = session_.metrics().asr_at;
+    }
 
     image_capture_.kick_off();
     request_inference(Inference::Goal::TRIGGER_VOICE, msg.data);
@@ -365,10 +375,36 @@ void BrainNode::on_tts_done(const std_msgs::msg::Empty&) {
         session_.metrics().tts_done_at = last_tts_done_at_;
         log_turn_metrics("complete");
         if (speaking_watchdog_) speaking_watchdog_->cancel();
-        RCLCPP_INFO(get_logger(), "TTS done, returning to idle");
         transition(State::IDLE);
         reset_session_timer();
     }
+}
+
+void BrainNode::on_voice_activity(const std_msgs::msg::Bool& msg) {
+    if (!vad_interrupt_enabled_) return;
+    // barge-in 只在机器人 TTS 播放时触发；REQUESTING 状态 LLM 还没出声，
+    // VAD 检测到的 voice 是用户自己的尾音/呼吸，会误取消刚发出的请求。
+    const bool interruptible = (state_ == State::SPEAKING);
+    if (msg.data && interruptible) {
+        ++vad_voice_frame_count_;
+        if (vad_voice_frame_count_ >= vad_interrupt_threshold_) {
+            RCLCPP_INFO(get_logger(),
+                        "VAD barge-in: %d consecutive voice frames",
+                        vad_voice_frame_count_);
+            cancel_current_turn("vad-barge-in");
+            transition(State::LISTENING);
+            reset_session_timer();
+            vad_voice_frame_count_ = 0;
+        }
+    } else {
+        vad_voice_frame_count_ = 0;
+    }
+}
+
+void BrainNode::test_inject_voice_activity(bool has_voice) {
+    auto msg = std_msgs::msg::Bool();
+    msg.data = has_voice;
+    on_voice_activity(msg);
 }
 
 // ---------------------------------------------------------------------------
@@ -485,13 +521,20 @@ void BrainNode::reset_session_timer() {
     });
 }
 
-void BrainNode::cancel_current_turn() {
+void BrainNode::cancel_current_turn(const char* reason) {
     if (llm_goal_handle_) {
         llm_client_->async_cancel_goal(llm_goal_handle_);
         llm_goal_handle_.reset();
     }
 
-    log_turn_metrics("barge-in");
+    // Stop TTS playback (no-op if no TTS active or queue empty).
+    auto ctrl = buddy_interfaces::msg::TtsControl();
+    ctrl.command = buddy_interfaces::msg::TtsControl::REPLACE_NOW;
+    ctrl.session_id = session_.session_id();
+    ctrl.turn_id = session_.turn_id();
+    tts_control_pub_->publish(ctrl);
+
+    log_turn_metrics(reason);
 
     auto msg = buddy_interfaces::msg::Sentence();
     msg.session_id = session_.session_id();

@@ -18,3 +18,11 @@ brain:
         strategy: "echo_substring"  # echo_substring | none
       followup_echo_guard_seconds: 8.0
       followup_echo_guard_min_chars: 4
+    vad_interrupt:
+      enabled: true
+      # 连续 voice 帧数阈值（每帧 = 1 个 capture chunk ≈ 100ms）。
+      # 达到阈值触发 barge-in，打断机器人 TTS 播放。
+      # 5 帧 = 500ms 连续 voice，覆盖"暂停一下"等短词（约 0.5-0.7 秒）。
+      # 只在 SPEAKING 状态触发，REQUESTING 不触发（避免用户尾音误取消请求）。
+      # 太低（如 3）会误触发；太高（如 8）短词打断不到。
+      voice_frame_threshold: 5

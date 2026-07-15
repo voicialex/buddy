@@ -74,6 +74,31 @@ if(BUILD_TESTING)
     buddy_interfaces
   )
 
+  ament_add_gtest(
+    test_vad_interrupt
+    test/test_vad_interrupt.cpp
+    src/brain_node.cpp
+    src/sentence_segmenter.cpp
+    src/emotion_trigger.cpp
+    src/asr_filter.cpp
+    src/asr_post_filter.cpp
+    src/session_context.cpp
+    src/image_capture_coordinator.cpp
+  )
+  target_include_directories(test_vad_interrupt PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+  target_compile_features(test_vad_interrupt PUBLIC cxx_std_17)
+  ament_target_dependencies(
+    test_vad_interrupt
+    ament_index_cpp
+    rclcpp
+    rclcpp_lifecycle
+    rclcpp_components
+    rclcpp_action
+    std_msgs
+    sensor_msgs
+    buddy_interfaces
+  )
+
   ament_add_gtest(test_segment test/test_segment.cpp src/sentence_segmenter.cpp)
   target_include_directories(test_segment PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
   target_compile_features(test_segment PUBLIC cxx_std_17)

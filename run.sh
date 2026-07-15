@@ -3,7 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARCH="$(uname -m)"
-INSTALL_DIR="$ROOT_DIR/output/${ARCH}/install"
+ROS2_DISTRO="${BUDDY_ROS2_DISTRO:-humble}"
+INSTALL_DIR="$ROOT_DIR/output/${ROS2_DISTRO}/${ARCH}/install"
 SETUP="$INSTALL_DIR/setup.bash"
 PREBUILT_CURRENT="$ROOT_DIR/prebuilt/current"
 

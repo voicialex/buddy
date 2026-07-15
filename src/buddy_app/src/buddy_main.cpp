@@ -155,7 +155,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    RCLCPP_INFO(logger, "Loading %zu components...", kComponents.size());
+    RCLCPP_DEBUG(logger, "Loading %zu components...", kComponents.size());
 
     for (const auto& entry : kComponents) {
         const auto& toggle_key = entry.toggle.empty() ? entry.param_name : entry.toggle;
@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
             continue;
         }
         auto lib_path = find_library(install_dir, entry.library, lib_dir);
-        RCLCPP_INFO(logger, "Loading %s", lib_path.c_str());
+        RCLCPP_DEBUG(logger, "Loading %s", lib_path.c_str());
 
         auto loader = std::make_unique<class_loader::ClassLoader>(lib_path);
 
@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
         for (const auto& param_file : param_files) {
             args.push_back("--params-file");
             args.push_back(param_file);
-            RCLCPP_INFO(logger, "  params: %s", param_file.c_str());
+            RCLCPP_DEBUG(logger, "  params: %s", param_file.c_str());
         }
         if (!entry.node_name.empty()) {
             args.push_back("-r");
@@ -204,7 +204,7 @@ int main(int argc, char** argv) {
             auto lc_node = std::static_pointer_cast<rclcpp_lifecycle::LifecycleNode>(node_instance);
             lifecycle_nodes.push_back(lc_node);
         } else {
-            RCLCPP_INFO(logger, "  %s: non-lifecycle node, added to executor only", entry.param_name.c_str());
+            RCLCPP_DEBUG(logger, "  %s: non-lifecycle node, added to executor only", entry.param_name.c_str());
         }
 
         wrappers.push_back(std::move(wrapper));
@@ -212,24 +212,24 @@ int main(int argc, char** argv) {
 
     // Lifecycle: configure → activate
     using CBReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
-    RCLCPP_INFO(logger, "Configuring %zu lifecycle nodes...", lifecycle_nodes.size());
+    RCLCPP_DEBUG(logger, "Configuring %zu lifecycle nodes...", lifecycle_nodes.size());
     for (auto& node : lifecycle_nodes) {
         CBReturn cb_rc = CBReturn::SUCCESS;
         node->configure(cb_rc);
         if (cb_rc == CBReturn::SUCCESS) {
-            RCLCPP_INFO(logger, "  %s: configured", node->get_name());
+            RCLCPP_DEBUG(logger, "  %s: configured", node->get_name());
         } else {
             RCLCPP_ERROR(logger, "  %s: configure FAILED (%d)", node->get_name(), static_cast<int>(cb_rc));
             rclcpp::shutdown();
             return 1;
         }
     }
-    RCLCPP_INFO(logger, "Activating...");
+    RCLCPP_DEBUG(logger, "Activating...");
     for (auto& node : lifecycle_nodes) {
         CBReturn cb_rc = CBReturn::SUCCESS;
         node->activate(cb_rc);
         if (cb_rc == CBReturn::SUCCESS) {
-            RCLCPP_INFO(logger, "  %s: activated", node->get_name());
+            RCLCPP_DEBUG(logger, "  %s: activated", node->get_name());
         } else {
             RCLCPP_ERROR(logger, "  %s: activate FAILED (%d)", node->get_name(), static_cast<int>(cb_rc));
             rclcpp::shutdown();
@@ -237,7 +237,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    RCLCPP_INFO(logger, "All nodes active. Spinning...");
+    RCLCPP_DEBUG(logger, "All nodes active. Spinning...");
 
     // Read KWS state from resolved audio param files (split or legacy) and
     // display appropriate banner.

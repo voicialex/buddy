@@ -155,6 +155,25 @@ resolve_rkllm_url() {
     echo "${base_url}${endpoint}"
 }
 
+resolve_rkllm_model_path() {
+    local model_path="${BUDDY_RKLLM_MODEL_PATH:-}"
+    # Relative path -> resolve against $PROJECT_DIR (so the same buddy.env
+    # works whether deployed to /opt/buddy or ~/out/opt/buddy).
+    if [[ -n "$model_path" && "$model_path" != /* ]]; then
+        model_path="$PROJECT_DIR/$model_path"
+    fi
+    if [[ -z "$model_path" && -d "$PROJECT_DIR/models/rkllm" ]]; then
+        model_path="$(find "$PROJECT_DIR/models/rkllm" -type f -name '*.rkllm' 2>/dev/null | head -1 || true)"
+    fi
+    if [[ -z "$model_path" && -d "$PROJECT_DIR/models" ]]; then
+        model_path="$(find "$PROJECT_DIR/models" -type f -name '*.rkllm' 2>/dev/null | head -1 || true)"
+    fi
+    if [[ -z "$model_path" || ! -f "$model_path" ]]; then
+        return 1
+    fi
+    echo "$model_path"
+}
+
 resolve_rkllm_server_cmd() {
     if [[ -n "${BUDDY_RKLLM_SERVER_CMD:-}" ]]; then
         echo "$BUDDY_RKLLM_SERVER_CMD"
@@ -175,23 +194,12 @@ resolve_rkllm_server_cmd() {
         return 1
     fi
 
-    local model_path="${BUDDY_RKLLM_MODEL_PATH:-}"
-    # Relative path → resolve against $PROJECT_DIR (so the same buddy.env
-    # works whether deployed to /opt/buddy or ~/out/opt/buddy).
-    if [[ -n "$model_path" && "$model_path" != /* ]]; then
-        model_path="$PROJECT_DIR/$model_path"
-    fi
-    if [[ -z "$model_path" && -d "$PROJECT_DIR/models/rkllm" ]]; then
-        model_path="$(find "$PROJECT_DIR/models/rkllm" -type f -name '*.rkllm' 2>/dev/null | head -1 || true)"
-    fi
-    if [[ -z "$model_path" && -d "$PROJECT_DIR/models" ]]; then
-        model_path="$(find "$PROJECT_DIR/models" -type f -name '*.rkllm' 2>/dev/null | head -1 || true)"
-    fi
-    if [[ -z "$model_path" || ! -f "$model_path" ]]; then
+    local model_path
+    model_path="$(resolve_rkllm_model_path)" || {
         log_err "RKLLM model not found"
         echo "  [!!] Place .rkllm files in models/rkllm/ or set BUDDY_RKLLM_MODEL_PATH" >&2
         return 1
-    fi
+    }
 
     local platform="${BUDDY_RKLLM_TARGET_PLATFORM:-rk3588}"
     # flask_server.py uses relative path 'lib/librkllmrt.so', must cd to its directory
@@ -449,7 +457,16 @@ case "${1:-start}" in
         sleep 1
         start_llm_service
         echo ""
-        echo "  LLM API: http://127.0.0.1:$LLM_PORT"
+        if [[ "$local_backend" == "ollama" ]]; then
+            echo "  Ollama: $OLLAMA_URL  |  LLM API: http://127.0.0.1:$LLM_PORT"
+        elif [[ "$local_backend" == "rk_llm" ]]; then
+            echo "  RKLLM: $(resolve_rkllm_url)  |  LLM API: http://127.0.0.1:$LLM_PORT"
+            local rkllm_model_path
+            rkllm_model_path="$(resolve_rkllm_model_path 2>/dev/null)" || rkllm_model_path=""
+            [[ -n "$rkllm_model_path" ]] && echo "  Model: $(basename "$rkllm_model_path")"
+        else
+            echo "  Local backend: $local_backend  |  LLM API: http://127.0.0.1:$LLM_PORT"
+        fi
         exit 0
         ;;
     install)
@@ -482,6 +499,9 @@ case "${1:-start}" in
             echo "  Ollama: $OLLAMA_URL  |  LLM API: http://127.0.0.1:$LLM_PORT"
         elif [[ "$local_backend" == "rk_llm" ]]; then
             echo "  RKLLM: $(resolve_rkllm_url)  |  LLM API: http://127.0.0.1:$LLM_PORT"
+            local rkllm_model_path
+            rkllm_model_path="$(resolve_rkllm_model_path 2>/dev/null)" || rkllm_model_path=""
+            [[ -n "$rkllm_model_path" ]] && echo "  Model: $(basename "$rkllm_model_path")"
         else
             echo "  Local backend: $local_backend  |  LLM API: http://127.0.0.1:$LLM_PORT"
         fi

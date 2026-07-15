@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <cmath>
+#include <mutex>
 #include <sstream>
 
 class NativeAsrBackend : public AsrBackend {
@@ -41,6 +42,7 @@ public:
     }
 
     AsrResult feed(const float* samples, int n) override {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (paused_.load()) return {};
 
         if (n <= 0) return {};
@@ -58,9 +60,9 @@ public:
             }
         } else {
             if (!has_voice_) {
+                RCLCPP_INFO(logger_, "ASR voice onset rms=%.4f", rms);
                 pipeline_.reset();
                 utterance_samples_.clear();
-                RCLCPP_DEBUG(logger_, "[ASR_DIAG] utterance_start rms=%.5f", rms);
             }
             has_voice_ = true;
             silence_chunks_ = 0;
@@ -68,23 +70,11 @@ public:
 
         if (has_voice_) {
             utterance_samples_.insert(utterance_samples_.end(), samples, samples + n);
-            RCLCPP_DEBUG(logger_,
-                         "[ASR_DIAG] native_state n=%d rms=%.5f silence_chunks=%d/%d buffered_samples=%zu",
-                        n,
-                        rms,
-                        silence_chunks_,
-                        kSilenceChunksForFinal,
-                        utterance_samples_.size());
         }
 
         if (!has_voice_ || silence_chunks_ < kSilenceChunksForFinal) return {};
 
         try {
-            RCLCPP_DEBUG(logger_,
-                         "[ASR_DIAG] final_flush begin buffered_samples=%zu silence_chunks=%d/%d",
-                        utterance_samples_.size(),
-                        silence_chunks_,
-                        kSilenceChunksForFinal);
             const auto final_token_ids =
                 pipeline_.accept_waveform(utterance_samples_.data(),
                                           static_cast<int>(utterance_samples_.size()),
@@ -100,11 +90,9 @@ public:
                     text_oss << tokens_[static_cast<size_t>(id)];
                 }
             }
-            RCLCPP_INFO(logger_,
-                        "[ASR_DIAG] final_flush token_ids=[%s] token_text=%s",
-                        id_oss.str().c_str(),
-                        text_oss.str().c_str());
             pending_text_ = text_oss.str();
+            RCLCPP_INFO(logger_, "ASR flush: tokens=%zu text='%s'",
+                        final_token_ids.size(), pending_text_.c_str());
         } catch (const std::exception& e) {
             RCLCPP_ERROR(logger_, "Native ASR final flush failed: %s", e.what());
         }
@@ -112,11 +100,6 @@ public:
         AsrResult result;
         result.text = pending_text_;
         result.is_final = !result.text.empty();
-        if (result.is_final) {
-            RCLCPP_DEBUG(logger_, "[ASR_DIAG] final_result=%s", result.text.c_str());
-        } else {
-            RCLCPP_DEBUG(logger_, "[ASR_DIAG] final_result empty");
-        }
         pending_text_.clear();
         utterance_samples_.clear();
         silence_chunks_ = 0;
@@ -126,6 +109,7 @@ public:
     }
 
     void reset() override {
+        std::lock_guard<std::mutex> lock(mutex_);
         pipeline_.reset();
         pending_text_.clear();
         utterance_samples_.clear();
@@ -134,6 +118,7 @@ public:
     }
 
     void pause(bool paused) override {
+        std::lock_guard<std::mutex> lock(mutex_);
         paused_.store(paused);
         if (paused) {
             pending_text_.clear();
@@ -144,9 +129,10 @@ public:
     }
 
 private:
-    static constexpr float kSilenceRmsThreshold = 0.01f;
+    static constexpr float kSilenceRmsThreshold = 0.002f;
     static constexpr int kSilenceChunksForFinal = 9;  // 9 * 100ms = 900ms
 
+    std::mutex mutex_;
     zipformer::Pipeline pipeline_;
     std::vector<std::string> tokens_;
     std::string pending_text_;

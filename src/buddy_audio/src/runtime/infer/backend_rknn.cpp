@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
@@ -248,21 +249,12 @@ public:
                 input_attrs_[i].size_with_stride);
         }
 
-        RCUTILS_LOG_DEBUG_NAMED(
-            kRknnLogName, "run#%llu call rknn_inputs_set",
-            static_cast<unsigned long long>(run_id));
         if (rknn_inputs_set(ctx_, rknn_inputs.size(), rknn_inputs.data()) != RKNN_SUCC) {
             throw std::runtime_error("rknn_inputs_set failed for model: " + current_model_path_);
         }
-        RCUTILS_LOG_DEBUG_NAMED(
-            kRknnLogName, "run#%llu rknn_inputs_set ok, call rknn_run",
-            static_cast<unsigned long long>(run_id));
         if (rknn_run(ctx_, nullptr) != RKNN_SUCC) {
             throw std::runtime_error("rknn_run failed for model: " + current_model_path_);
         }
-        RCUTILS_LOG_DEBUG_NAMED(
-            kRknnLogName, "run#%llu rknn_run ok, call rknn_outputs_get",
-            static_cast<unsigned long long>(run_id));
 
         std::vector<rknn_output> rknn_outs(output_attrs_.size());
         for (auto& o : rknn_outs) {
@@ -272,9 +264,6 @@ public:
         if (rknn_outputs_get(ctx_, rknn_outs.size(), rknn_outs.data(), nullptr) != RKNN_SUCC) {
             throw std::runtime_error("rknn_outputs_get failed for model: " + current_model_path_);
         }
-        RCUTILS_LOG_DEBUG_NAMED(
-            kRknnLogName, "run#%llu rknn_outputs_get ok",
-            static_cast<unsigned long long>(run_id));
 
         TensorMap result;
         for (size_t i = 0; i < rknn_outs.size(); ++i) {

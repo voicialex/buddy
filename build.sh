@@ -15,6 +15,7 @@ Options:
   --all               Parallel build all 4 combos (arm64/x86 × humble/jazzy)
   -j N        Parallel workers (default: \$(nproc), or BUDDY_PARALLEL_WORKERS env)
   -c          Clean build
+  --rebuild-base      Force rebuild buddy-base image (apt + pip deps)
   -p, --package       x86 only: package .deb after build (default: skip)
   -v VER      Deb version (default: 1.0.0)
 
@@ -127,6 +128,26 @@ build_docker() {
   fi
   mkdir -p "$output_dir"
 
+  # 预构建 base image（apt + pip deps），避免每次 build 重跑 apt update
+  # 重建: ./build.sh --rebuild-base
+  local base_image_tag="buddy-base:${ROS2_DISTRO}-${docker_arch}"
+  local base_cache_flag=()
+  [[ "$CLEAN" == true ]] && base_cache_flag=(--no-cache)
+
+  if ! docker image inspect "$base_image_tag" >/dev/null 2>&1 || [[ "$REBUILD_BASE" == true ]]; then
+    echo "[INFO] Building base image: $base_image_tag"
+    DOCKER_BUILDKIT=1 docker build \
+      "${base_cache_flag[@]}" \
+      --target "${ROS2_DISTRO}-base" \
+      -t "$base_image_tag" \
+      --build-arg TARGET_ARCH="$docker_arch" \
+      --build-arg DEVICE="$DEVICE" \
+      -f "$DOCKER_DIR/Dockerfile.base" \
+      "$ROOT_DIR"
+  else
+    echo "[INFO] Reusing base image: $base_image_tag"
+  fi
+
   local cache_flag=()
   [[ "$CLEAN" == true ]] && cache_flag=(--no-cache)
 
@@ -137,6 +158,8 @@ build_docker() {
     --build-arg VERSION="$version" \
     --build-arg PARALLEL_WORKERS="$parallel" \
     --build-arg DEVICE="$DEVICE" \
+    --build-arg HUMBLE_BASE_IMAGE="$base_image_tag" \
+    --build-arg JAZZY_BASE_IMAGE="$base_image_tag" \
     --target "${ROS2_DISTRO}-export-package" \
     --output "type=local,dest=$output_dir/" \
     -f "$DOCKER_DIR/Dockerfile" \
@@ -151,6 +174,8 @@ build_docker() {
       --build-arg VERSION="$version" \
       --build-arg PARALLEL_WORKERS="$parallel" \
       --build-arg DEVICE="$DEVICE" \
+      --build-arg HUMBLE_BASE_IMAGE="$base_image_tag" \
+      --build-arg JAZZY_BASE_IMAGE="$base_image_tag" \
       --target "${ROS2_DISTRO}-export-models" \
       --output "type=local,dest=$output_dir/" \
       -f "$DOCKER_DIR/Dockerfile" \
@@ -548,6 +573,7 @@ ROS2_DISTRO="jazzy"
 CLEAN=false
 PACKAGE=false
 BUILD_ALL=false
+REBUILD_BASE=false
 VERSION="1.0.0"
 PARALLEL="${BUDDY_PARALLEL_WORKERS:-$(nproc)}"
 
@@ -558,6 +584,7 @@ while [[ $# -gt 0 ]]; do
     --ros-distro) ROS2_DISTRO="$2"; shift 2 ;;
     --all) BUILD_ALL=true; shift ;;
     -c) CLEAN=true; shift ;;
+    --rebuild-base) REBUILD_BASE=true; shift ;;
     -p|--package) PACKAGE=true; shift ;;
     -v) VERSION="$2"; shift 2 ;;
     -j) PARALLEL="$2"; shift 2 ;;

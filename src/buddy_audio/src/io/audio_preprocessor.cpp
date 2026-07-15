@@ -201,16 +201,20 @@ AudioPreprocessResult AudioPreprocessor::process_capture_chunk(std::vector<float
             }
             const float* reverse_src[1] = {reverse_frame.data()};
             float* reverse_dst[1] = {reverse_frame.data()};
-            if (state->apm->ProcessReverseStream(reverse_src, stream_cfg, stream_cfg, reverse_dst) !=
-                webrtc::AudioProcessing::kNoError) {
-                RCLCPP_DEBUG(logger_, "ProcessReverseStream failed");
+            const int prs_rc = state->apm->ProcessReverseStream(reverse_src, stream_cfg, stream_cfg, reverse_dst);
+            if (prs_rc != webrtc::AudioProcessing::kNoError) {
+                RCLCPP_WARN(logger_, "ProcessReverseStream failed: rc=%d", prs_rc);
             }
         }
 
         const float* near_src[1] = {near_frame.data()};
         float* near_dst[1] = {near_frame.data()};
-        if (state->apm->ProcessStream(near_src, stream_cfg, stream_cfg, near_dst) != webrtc::AudioProcessing::kNoError) {
-            RCLCPP_DEBUG(logger_, "ProcessStream failed");
+        if (cfg_.aec_enable) {
+            state->apm->set_stream_delay_ms(std::max(0, cfg_.aec_stream_delay_ms));
+        }
+        const int ps_rc = state->apm->ProcessStream(near_src, stream_cfg, stream_cfg, near_dst);
+        if (ps_rc != webrtc::AudioProcessing::kNoError) {
+            RCLCPP_WARN(logger_, "ProcessStream failed: rc=%d", ps_rc);
         }
 
         if (cfg_.vad_enable || cfg_.vad_gate_enable) {

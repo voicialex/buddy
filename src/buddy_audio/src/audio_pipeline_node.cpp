@@ -40,11 +40,14 @@ CallbackReturn AudioPipelineNode::on_configure(const rclcpp_lifecycle::State&) {
     kws_enabled_ = config.kws_enabled;
     asr_cooldown_chunks_ = config.asr_cooldown_chunks;
     asr_wake_guard_chunks_ = config.asr_wake_guard_chunks;
+    vad_publish_enabled_ = config.preprocess.enable && config.preprocess.vad_enable;
 
     // AudioCapture
     capture_ = std::make_unique<AudioCapture>(get_logger());
     capture_->configure(config.mic_device, sample_rate_);
     preprocessor_ = std::make_unique<AudioPreprocessor>(get_logger(), sample_rate_, config.preprocess);
+    RCLCPP_INFO(get_logger(), "Audio preprocessor: %s",
+                preprocessor_->is_enabled() ? "enabled" : "disabled");
 
     AsrEngineBundle asr_bundle;
     if (!create_asr_engine(config, get_logger(), &asr_bundle)) {
@@ -92,6 +95,7 @@ CallbackReturn AudioPipelineNode::on_configure(const rclcpp_lifecycle::State&) {
     wake_word_pub_ = create_publisher<std_msgs::msg::String>("/audio/wake_word", 10);
     asr_text_pub_ = create_publisher<std_msgs::msg::String>("/audio/asr_text", 10);
     tts_done_pub_ = create_publisher<std_msgs::msg::Empty>("/audio/tts_done", 10);
+    voice_activity_pub_ = create_publisher<std_msgs::msg::Bool>("/audio/voice_activity", 10);
     sentence_sub_ = create_subscription<buddy_interfaces::msg::Sentence>(
         "/brain/sentence", 10, std::bind(&AudioPipelineNode::on_sentence, this, std::placeholders::_1));
     tts_control_sub_ = create_subscription<buddy_interfaces::msg::TtsControl>(
@@ -123,48 +127,39 @@ CallbackReturn AudioPipelineNode::on_activate(const rclcpp_lifecycle::State&) {
 }
 
 void AudioPipelineNode::capture_loop() {
-    size_t diag_chunk_index = 0;
+    int diag_chunks = 0;
     while (running_) {
         auto chunk = capture_->read_chunk();
         if (chunk.empty()) {
             continue;
         }
-        ++diag_chunk_index;
 
         const float raw_rms = rms_of(chunk);
+
         AudioPreprocessResult preprocess;
         if (preprocessor_ && preprocessor_->is_enabled()) {
             preprocess = preprocessor_->process_capture_chunk(&chunk, kws_enabled_);
-            if (diag_chunk_index % 10 == 0) {
-                RCLCPP_DEBUG(get_logger(),
-                             "[ASR_DIAG] capture chunk=%zu raw_rms=%.5f post_rms=%.5f preprocess_voice=%d pass=%d "
-                             "cooldown=%d wake_guard=%d kws=%d",
-                            diag_chunk_index,
-                            raw_rms,
-                            rms_of(chunk),
-                            preprocess.has_voice,
-                            preprocess.should_pass,
-                            cooldown_chunks_remaining_.load(),
-                            wake_guard_chunks_remaining_.load(),
-                            kws_enabled_);
+            const float post_rms = rms_of(chunk);
+            if (vad_publish_enabled_ && voice_activity_pub_) {
+                auto vad_msg = std_msgs::msg::Bool();
+                vad_msg.data = preprocess.has_voice && post_rms > 0.002f;
+                voice_activity_pub_->publish(vad_msg);
             }
-            if (!preprocess.should_pass) {
+
+            // Periodic diag: raw/post RMS + voice + pass (every 10 chunks / 1s)
+            if (++diag_chunks % 10 == 0) {
                 RCLCPP_INFO(get_logger(),
-                            "[ASR_DIAG] capture dropped chunk=%zu raw_rms=%.5f post_rms=%.5f preprocess_voice=%d",
-                            diag_chunk_index,
-                            raw_rms,
-                            rms_of(chunk),
-                            preprocess.has_voice);
+                    "DIAG: raw_rms=%.5f post_rms=%.5f voice=%d pass=%d cooldown=%d wguard=%d",
+                    raw_rms, post_rms,
+                    preprocess.has_voice ? 1 : 0,
+                    preprocess.should_pass ? 1 : 0,
+                    cooldown_chunks_remaining_.load(),
+                    wake_guard_chunks_remaining_.load());
+            }
+
+            if (!preprocess.should_pass) {
                 continue;
             }
-        } else if (diag_chunk_index % 10 == 0) {
-            RCLCPP_DEBUG(get_logger(),
-                         "[ASR_DIAG] capture chunk=%zu raw_rms=%.5f preprocess=off cooldown=%d wake_guard=%d kws=%d",
-                        diag_chunk_index,
-                        raw_rms,
-                        cooldown_chunks_remaining_.load(),
-                        wake_guard_chunks_remaining_.load(),
-                        kws_enabled_);
         }
 
         // Handle cooldown countdown after TTS done
@@ -214,10 +209,16 @@ void AudioPipelineNode::capture_loop() {
 }
 
 void AudioPipelineNode::on_sentence(const buddy_interfaces::msg::Sentence& msg) {
+    // turn_id 格式 sess-<ts>-t<N>，日志只打印 t<N> 部分
+    std::string short_turn = msg.turn_id;
+    if (auto pos = short_turn.rfind('-'); pos != std::string::npos) {
+        short_turn = short_turn.substr(pos + 1);
+    }
+
     RCLCPP_INFO(get_logger(),
                 "TTS: sentence [%u] turn=%s is_final=%d: %s",
                 msg.index,
-                msg.turn_id.c_str(),
+                short_turn.c_str(),
                 msg.is_final,
                 msg.text.c_str());
 
@@ -225,9 +226,10 @@ void AudioPipelineNode::on_sentence(const buddy_interfaces::msg::Sentence& msg) 
     if (!msg.turn_id.empty() && msg.turn_id != current_turn_id_) {
         if (tts_player_) {
             tts_player_->clear_queue();
+            tts_player_->clear_interrupt();
         }
         current_turn_id_ = msg.turn_id;
-        RCLCPP_INFO(get_logger(), "New turn %s, TTS queue cleared", msg.turn_id.c_str());
+        RCLCPP_INFO(get_logger(), "New turn %s, TTS queue cleared", short_turn.c_str());
     }
 
     if (tts_player_) {
@@ -254,6 +256,9 @@ void AudioPipelineNode::on_tts_control(const buddy_interfaces::msg::TtsControl& 
         return;
     }
     tts_player_->interrupt_now();
+    // Start cooldown directly — on_done_ may never fire if clear_queue drops the
+    // empty final Sentence that Brain publishes right after TtsControl.
+    cooldown_chunks_remaining_.store(asr_cooldown_chunks_);
 }
 
 CallbackReturn AudioPipelineNode::on_deactivate(const rclcpp_lifecycle::State&) {
@@ -278,6 +283,7 @@ CallbackReturn AudioPipelineNode::on_cleanup(const rclcpp_lifecycle::State&) {
     wake_word_pub_.reset();
     asr_text_pub_.reset();
     tts_done_pub_.reset();
+    voice_activity_pub_.reset();
     sentence_sub_.reset();
     tts_control_sub_.reset();
     return CallbackReturn::SUCCESS;

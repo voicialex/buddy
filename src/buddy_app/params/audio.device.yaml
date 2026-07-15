@@ -6,8 +6,13 @@ audio:
     #   <card_name> comes from `arecord -l` / `aplay -l` output:
     #     card 2: Device [USB PnP Sound Device]  →  CARD=Device
     #   Use `plughw` (not `hw`) for automatic sample-rate conversion (16kHz).
-    # mic_device: "plughw:CARD=Headset,DEV=0"      # desktop headset
-    # speaker_device: "plughw:CARD=Headset,DEV=0"  # desktop headset
-    mic_device: "plughw:CARD=Device,DEV=0"         # rk3588 USB PnP Sound Device
-    speaker_device: "plughw:CARD=Device,DEV=0"     # rk3588 USB PnP Sound Device
+    # ─── Pi RK3588 板载 RT5616 编解码器（当前使用）──────────────────
+    # mic_device: "plughw:CARD=realtekrt5616co,DEV=0"
+    # speaker_device: "plughw:CARD=realtekrt5616co,DEV=0"
+    # ─── 桌面开发机 Headset（保留备用）─────────────────────────────
+    mic_device: "plughw:CARD=Headset,DEV=0"      # desktop headset
+    speaker_device: "plughw:CARD=Headset,DEV=0"  # desktop headset
+    # ─── rk3588 USB PnP Sound Device（保留备用）───────────────────
+    # mic_device: "plughw:CARD=Device,DEV=0"         # rk3588 USB PnP Sound Device
+    # speaker_device: "plughw:CARD=Device,DEV=0"     # rk3588 USB PnP Sound Device
     sample_rate: 16000

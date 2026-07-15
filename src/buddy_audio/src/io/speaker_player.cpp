@@ -1,6 +1,7 @@
 #include "buddy_audio/io/speaker_player.hpp"
 
 #include <algorithm>
+#include <unordered_map>
 
 TtsPlayer::TtsPlayer(rclcpp::Logger logger) : logger_(logger) {}
 
@@ -9,25 +10,65 @@ TtsPlayer::~TtsPlayer() {
 }
 
 std::string TtsPlayer::clean_tts_text(const std::string& text) {
+    static const std::unordered_map<std::string, std::string> kFullWidthPunc = {
+        {"，", ","}, {"、", ","}, {"：", ","}, {"；", ","}, {"·", ","},
+        {"。", "."}, {"！", "!"}, {"？", "?"},
+        {"“", "'"}, {"”", "'"}, {"‘", "'"}, {"’", "'"},
+        {"（", "'"}, {"）", "'"}, {"《", "'"}, {"》", "'"},
+        {"【", "'"}, {"】", "'"}, {"「", "'"}, {"」", "'"},
+        {"—", "-"}, {"～", "-"},
+    };
+
     std::string out;
     out.reserve(text.size());
-    for (size_t i = 0; i < text.size();) {
+    size_t i = 0;
+    while (i < text.size()) {
         unsigned char c = text[i];
-        if (c == '*' || c == '#' || c == '_' || c == '`' || c == '~' || c == '|') {
+
+        // ASCII: keep alnum, space, newline, and common punctuation that
+        // sherpa melo recognizes (,.!?'-); drop everything else (*#+= etc.)
+        if (c < 0x80) {
+            const bool alnum = (c >= '0' && c <= '9') ||
+                               (c >= 'A' && c <= 'Z') ||
+                               (c >= 'a' && c <= 'z');
+            const bool allowed_punc = c == ' ' || c == '\n' ||
+                                      c == ',' || c == '.' || c == '!' ||
+                                      c == '?' || c == '\'' || c == '-';
+            if (alnum || allowed_punc) {
+                out += static_cast<char>(c);
+            }
             ++i;
             continue;
         }
-        // 4-byte UTF-8: emoji, rare symbols (with boundary check)
-        if (c >= 0xF0) {
-            i += std::min(size_t(4), text.size() - i);
+
+        // Determine UTF-8 char length
+        size_t char_len = 0;
+        if ((c & 0xE0) == 0xC0) char_len = 2;
+        else if ((c & 0xF0) == 0xE0) char_len = 3;
+        else if ((c & 0xF8) == 0xF0) char_len = 4;
+        else { ++i; continue; }  // invalid leading byte
+        if (i + char_len > text.size()) break;  // truncated
+
+        std::string ch = text.substr(i, char_len);
+
+        // 4-byte: emoji/rare symbols, skip
+        if (char_len == 4) {
+            i += char_len;
             continue;
         }
-        if (c < 0x20 && c != '\n') {
-            ++i;
-            continue;
+
+        // 3-byte: full-width punctuation → half-width
+        if (char_len == 3) {
+            auto it = kFullWidthPunc.find(ch);
+            if (it != kFullWidthPunc.end()) {
+                out += it->second;
+                i += char_len;
+                continue;
+            }
         }
-        out += static_cast<char>(c);
-        ++i;
+
+        out += ch;
+        i += char_len;
     }
     return out;
 }
@@ -79,6 +120,10 @@ void TtsPlayer::interrupt_now() {
     queue_cv_.notify_all();
 }
 
+void TtsPlayer::clear_interrupt() {
+    interrupt_requested_.store(false);
+}
+
 size_t TtsPlayer::pending_queue_size_for_test() {
     std::lock_guard<std::mutex> lock(queue_mtx_);
     return queue_.size();
@@ -110,6 +155,10 @@ bool TtsPlayer::ensure_playback_open(int32_t sample_rate) {
         snd_pcm_hw_params_set_channels(playback_, hw, 1);
         unsigned int rate = static_cast<unsigned int>(sample_rate);
         snd_pcm_hw_params_set_rate_near(playback_, hw, &rate, nullptr);
+        snd_pcm_uframes_t period_size = 1024;
+        snd_pcm_hw_params_set_period_size_near(playback_, hw, &period_size, nullptr);
+        snd_pcm_uframes_t buffer_size = 16384;
+        snd_pcm_hw_params_set_buffer_size_near(playback_, hw, &buffer_size);
         rc = snd_pcm_hw_params(playback_, hw);
         if (rc < 0) {
             RCLCPP_WARN(logger_, "[speaker] hw_params failed: %s", snd_strerror(rc));
@@ -120,7 +169,10 @@ bool TtsPlayer::ensure_playback_open(int32_t sample_rate) {
         }
 
         playback_rate_ = sample_rate;
-        RCLCPP_INFO(logger_, "[speaker] device ready: %s", speaker_device_.c_str());
+        RCLCPP_INFO(logger_, "[speaker] device ready: %s (period=%lu buffer=%lu)",
+                    speaker_device_.c_str(),
+                    static_cast<unsigned long>(period_size),
+                    static_cast<unsigned long>(buffer_size));
         return true;
     }
 
@@ -138,7 +190,15 @@ void TtsPlayer::close_playback() {
 }
 
 bool TtsPlayer::play_speech(const float* samples, int32_t n, int32_t sample_rate) {
+    const auto t_start = std::chrono::steady_clock::now();
     if (!ensure_playback_open(sample_rate)) {
+        return false;
+    }
+
+    // generate() 期间可能被 interrupt_now() 设置标记，此时跳过播放。
+    // 标记的跨 turn 清理由 on_sentence 检测 turn_id 变化时调用 clear_interrupt()。
+    if (interrupt_requested_.load()) {
+        interrupt_requested_.store(false);
         return false;
     }
 
@@ -180,6 +240,9 @@ bool TtsPlayer::play_speech(const float* samples, int32_t n, int32_t sample_rate
     }
 
     last_play_time_ = std::chrono::steady_clock::now();
+    const auto play_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        last_play_time_ - t_start).count();
+    RCLCPP_INFO(logger_, "play_speech: %d samples @ %dHz (%ldms)", n, sample_rate, play_ms);
     return offset >= n;
 }
 
@@ -210,7 +273,11 @@ void TtsPlayer::tts_loop() {
         if (!msg.text.empty()) {
             auto clean = clean_tts_text(msg.text);
             if (!clean.empty()) {
+                const auto t0 = std::chrono::steady_clock::now();
                 auto result = backend_->generate(clean);
+                const auto gen_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - t0).count();
+                RCLCPP_INFO(logger_, "TTS generate: %zu samples (%ldms)", result.samples.size(), gen_ms);
                 if (result.ok()) {
                     playback_ok = play_speech(
                         result.samples.data(), static_cast<int32_t>(result.samples.size()), result.sample_rate);

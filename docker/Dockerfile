@@ -6,48 +6,21 @@ ARG VERSION=1.0.0
 ARG PARALLEL_WORKERS=8
 ARG DEVICE=cpu
 ARG TARGET_ARCH=x86_64
+# 预构建的 base image（apt + pip deps），由 build.sh 自动构建/复用
+# 重建 base: ./build.sh --rebuild-base
+ARG HUMBLE_BASE_IMAGE=buddy-base:humble
+ARG JAZZY_BASE_IMAGE=buddy-base:jazzy
 
 # ============================================================
 # Humble (Ubuntu 22.04, Python 3.10)
+# apt + pip deps 在 docker/Dockerfile.base 中预构建
 # ============================================================
-FROM ubuntu:22.04 AS humble-base
+FROM ${HUMBLE_BASE_IMAGE} AS humble-base
 ARG TARGET_ARCH
 ARG DEVICE
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONWARNINGS=ignore::DeprecationWarning
 SHELL ["/bin/bash", "-c"]
-
-# --- apt sources ---
-RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list
-
-RUN if [ "$TARGET_ARCH" = "arm64" ]; then \
-      dpkg --add-architecture arm64 && \
-      sed -i 's|^deb |deb [arch=amd64] |g' /etc/apt/sources.list && \
-      echo "deb [arch=arm64] http://mirrors.aliyun.com/ubuntu-ports jammy main restricted universe multiverse" >> /etc/apt/sources.list && \
-      echo "deb [arch=arm64] http://mirrors.aliyun.com/ubuntu-ports jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list; \
-    fi
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-      build-essential cmake python3-pip python3-venv python3-dev python3-numpy \
-      pkg-config python3-lark python3-yaml python3-empy python3-catkin-pkg \
-      libboost-dev libssl-dev \
-      ccache python3-setuptools curl \
-      libasound2-dev libwebrtc-audio-processing-dev \
-    && if [ "$TARGET_ARCH" = "arm64" ]; then \
-      apt-get install -y --no-install-recommends \
-        gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-        libc6-dev-arm64-cross \
-        libboost-dev:arm64 \
-        libpython3-dev:arm64 \
-        libasound2-dev:arm64 libwebrtc-audio-processing-dev:arm64 \
-        libssl-dev:arm64; \
-    fi
-
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip3 install colcon-common-extensions vcstool 'empy<4' lark
 
 # Toolchain file (arm64 only)
 COPY docker/toolchain-aarch64.cmake /opt/toolchain-aarch64.cmake
@@ -81,43 +54,14 @@ ENV PYTHON_VER=3.10
 
 # ============================================================
 # Jazzy (Ubuntu 24.04, Python 3.12)
+# apt + pip deps 在 docker/Dockerfile.base 中预构建
 # ============================================================
-FROM ubuntu:24.04 AS jazzy-base
+FROM ${JAZZY_BASE_IMAGE} AS jazzy-base
 ARG TARGET_ARCH
 ARG DEVICE
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONWARNINGS=ignore::DeprecationWarning
 SHELL ["/bin/bash", "-c"]
-
-# --- apt sources (24.04 deb822 format) ---
-RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/ubuntu.sources \
-    && dpkg --add-architecture arm64 \
-    && echo "deb [arch=arm64] http://mirrors.aliyun.com/ubuntu-ports noble main restricted universe multiverse" > /etc/apt/sources.list.d/arm64.list \
-    && echo "deb [arch=arm64] http://mirrors.aliyun.com/ubuntu-ports noble-updates main restricted universe multiverse" >> /etc/apt/sources.list.d/arm64.list \
-    && sed -i 's|^Types: deb|Types: deb\nArchitectures: amd64|' /etc/apt/sources.list.d/ubuntu.sources
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-      build-essential cmake python3-pip python3-venv python3-dev python3-numpy pkg-config \
-      python3-lark python3-yaml python3-empy python3-catkin-pkg \
-      libboost-dev libssl-dev \
-      ccache python3-setuptools curl \
-      libasound2-dev libwebrtc-audio-processing-dev \
-    && if [ "$TARGET_ARCH" = "arm64" ]; then \
-      apt-get install -y --no-install-recommends \
-        gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-        libboost-dev:arm64 \
-        libssl-dev:arm64 \
-        libpython3-dev:arm64 \
-        libyaml-cpp-dev:arm64 \
-        libasound2-dev:arm64 libwebrtc-audio-processing-dev:arm64; \
-    fi \
-    && rm -f /usr/lib/python3*/EXTERNALLY-MANAGED
-
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip3 install --break-system-packages colcon-common-extensions vcstool
 
 # Toolchain file (arm64 only)
 COPY docker/toolchain-aarch64.cmake /opt/toolchain-aarch64.cmake

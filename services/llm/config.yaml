@@ -11,7 +11,7 @@ rules: |
 
 local:
   # 切换本地推理后端：ollama | vllm | rk_llm（重启 LLM service 生效）
-  active_backend: "rk_llm"
+  active_backend: "ollama"
 
   routing_prompt: |
     判断这个问题应该由本地模型还是云端模型回答。只输出一个词：LOCAL 或 CLOUD。

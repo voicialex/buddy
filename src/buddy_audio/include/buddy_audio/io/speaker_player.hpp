@@ -32,6 +32,7 @@ public:
     void enqueue(const buddy_interfaces::msg::Sentence& msg);
     void clear_queue();
     void interrupt_now();
+    void clear_interrupt();
     size_t pending_queue_size_for_test();
 
 private:

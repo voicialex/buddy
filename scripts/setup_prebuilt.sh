@@ -122,8 +122,8 @@ MELO_TTS_HF_BASE="${BUDDY_MELO_TTS_HF_BASE:-https://huggingface.co/voicialex/mel
 ZIPFORMER_RKNN_HF_BASE="${BUDDY_ZIPFORMER_RKNN_HF_BASE:-https://huggingface.co/voicialex/zipformer-asr-rknn/resolve/main/rknn}"
 ZIPFORMER_ONNX_HF_BASE="${BUDDY_ZIPFORMER_ONNX_HF_BASE:-https://huggingface.co/voicialex/zipformer-asr-rknn/resolve/main/onnx}"
 FACE_EMOTION_HF_BASE="${BUDDY_FACE_EMOTION_HF_BASE:-https://huggingface.co/voicialex/face-emotion-rknn/resolve/main}"
-RKLLM_HF_BASE="${BUDDY_RKLLM_HF_BASE:-https://huggingface.co/whaoyang/unsloth-gemma-3-1b-it-rk3588-1.2.1/resolve/main}"
-RKLLM_MODEL_FILE="${BUDDY_RKLLM_MODEL_FILE:-gemma-3-1b-it-w8a8.rkllm}"
+RKLLM_HF_BASE="${BUDDY_RKLLM_HF_BASE:-https://huggingface.co/c01zaut/Qwen2.5-3B-Instruct-RK3588-1.1.4/resolve/main}"
+RKLLM_MODEL_FILE="${BUDDY_RKLLM_MODEL_FILE:-Qwen2.5-3B-Instruct-rk3588-w8a8_g256-opt-0-hybrid-ratio-0.0.rkllm}"
 
 # GitHub Release fallback (override via BUDDY_* env vars)
 THIRDPARTY_RELEASE_TAG="${BUDDY_THIRDPARTY_TAG:-v2026.06.16}"

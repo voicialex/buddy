@@ -88,7 +88,6 @@ RecognitionEvent SpeechRecognizer::feed(const float* samples, int n) {
         if (r && r->keyword && r->keyword[0] != '\0') {
             event.type = RecognitionEvent::WAKE_WORD;
             event.text = r->keyword;
-            RCLCPP_DEBUG(logger_, "[ASR_DIAG] wake_word=%s", event.text.c_str());
             SherpaOnnxDestroyKeywordResult(r);
             SherpaOnnxDestroyOnlineStream(kws_stream_);
             kws_stream_ = sherpa_cast(SherpaOnnxCreateKeywordStream(kws_));
@@ -104,7 +103,6 @@ RecognitionEvent SpeechRecognizer::feed(const float* samples, int n) {
         if (asr_result.ok()) {
             event.type = RecognitionEvent::ASR_TEXT;
             event.text = asr_result.text;
-            RCLCPP_DEBUG(logger_, "[ASR_DIAG] asr_text=%s", event.text.c_str());
         }
     }
 

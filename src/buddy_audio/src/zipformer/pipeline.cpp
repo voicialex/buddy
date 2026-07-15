@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cmath>
 #include <complex>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
@@ -364,8 +365,13 @@ std::vector<int64_t> Pipeline::accept_waveform(const float* samples, int n, bool
     // Process encoder chunks
     std::vector<int64_t> step_tokens;
     int feat_frames = static_cast<int>(impl_->feature_buffer.size() / options_.feature_dim);
+    int enc_iters = 0;
+    int first_argmax = -1;
+    float enc_out_min = 0.0f, enc_out_max = 0.0f, enc_out_mean = 0.0f;
+    float joiner_logit_min = 0.0f, joiner_logit_max = 0.0f;
 
     while (feat_frames >= impl_->encoder_chunk_size || (is_final && feat_frames > 0)) {
+        ++enc_iters;
         const int use_frames = std::min(feat_frames, impl_->encoder_chunk_size);
 
         // Build encoder input
@@ -383,6 +389,22 @@ std::vector<int64_t> Pipeline::accept_waveform(const float* samples, int n, bool
         if (out_it == enc_outputs.end()) throw std::runtime_error("encoder_out not found");
         const auto& enc_out = out_it->second;
         int out_frames = static_cast<int>(enc_out.shape[1]);
+
+        // Encoder output diagnostics
+        {
+            const float* ed = enc_out.ptr<float>();
+            size_t en = enc_out.numel();
+            float emin = ed[0], emax = ed[0];
+            double esum = 0.0;
+            for (size_t i = 0; i < en; ++i) {
+                if (ed[i] < emin) emin = ed[i];
+                if (ed[i] > emax) emax = ed[i];
+                esum += static_cast<double>(ed[i]);
+            }
+            enc_out_min = emin;
+            enc_out_max = emax;
+            enc_out_mean = static_cast<float>(esum / static_cast<double>(en));
+        }
 
         // Decode frames
         if (!impl_->decoder_ready) {
@@ -409,8 +431,20 @@ std::vector<int64_t> Pipeline::accept_waveform(const float* samples, int n, bool
                 const float* lp = logit.ptr<float>();
                 size_t vocab = logit.numel();
 
+                // Joiner logit diagnostics (only first frame)
+                if (first_argmax < 0) {
+                    float jmin = lp[0], jmax = lp[0];
+                    for (size_t vi = 1; vi < vocab; ++vi) {
+                        if (lp[vi] < jmin) jmin = lp[vi];
+                        if (lp[vi] > jmax) jmax = lp[vi];
+                    }
+                    joiner_logit_min = jmin;
+                    joiner_logit_max = jmax;
+                }
+
                 int64_t next_id = static_cast<int64_t>(
                     std::distance(lp, std::max_element(lp, lp + vocab)));
+                if (first_argmax < 0) first_argmax = static_cast<int>(next_id);
 
                 if (next_id == options_.blank_id || next_id == options_.unk_id) break;
 
@@ -439,6 +473,15 @@ std::vector<int64_t> Pipeline::accept_waveform(const float* samples, int n, bool
             impl_->feature_buffer.begin(),
             impl_->feature_buffer.begin() + use_frames * options_.feature_dim);
         feat_frames = static_cast<int>(impl_->feature_buffer.size() / options_.feature_dim);
+    }
+
+    if (is_final) {
+        fprintf(stderr, "PIPELINE_DIAG: feat_frames=%d enc_iters=%d step_tokens=%zu first_argmax=%d blank=%d unk=%d "
+                "enc_out=[%.4f,%.4f] mean=%.4f joiner_logit=[%.4f,%.4f]\n",
+                feat_frames, enc_iters, step_tokens.size(), first_argmax,
+                static_cast<int>(options_.blank_id), static_cast<int>(options_.unk_id),
+                enc_out_min, enc_out_max, enc_out_mean,
+                joiner_logit_min, joiner_logit_max);
     }
 
     return step_tokens;

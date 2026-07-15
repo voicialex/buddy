@@ -1,6 +1,7 @@
 #include <sherpa-onnx/c-api/c-api.h>
 
 #include <atomic>
+#include <cmath>
 #include <filesystem>
 
 #include "buddy_audio/asr/asr_backend.hpp"
@@ -33,10 +34,7 @@ public:
         cfg.model_config.provider = "cpu";
         cfg.model_config.num_threads = 1;
         cfg.decoding_method = config.decoding_method.c_str();
-        cfg.enable_endpoint = 1;
-        cfg.rule1_min_trailing_silence = 2.4f;
-        cfg.rule2_min_trailing_silence = 1.2f;
-        cfg.rule3_min_utterance_length = 20.0f;
+        cfg.enable_endpoint = 0;  // use our own VAD-based endpoint detection
 
         asr_ = const_cast<SherpaOnnxOnlineRecognizer*>(SherpaOnnxCreateOnlineRecognizer(&cfg));
         if (!asr_) {
@@ -44,7 +42,7 @@ public:
             return false;
         }
         asr_stream_ = const_cast<SherpaOnnxOnlineStream*>(SherpaOnnxCreateOnlineStream(asr_));
-        RCLCPP_INFO(logger_, "LocalAsrBackend ready");
+        RCLCPP_INFO(logger_, "LocalAsrBackend ready (custom VAD endpoint, threshold=%.4f)", kSilenceRmsThreshold);
         return true;
     }
 
@@ -52,29 +50,81 @@ public:
         AsrResult result;
         if (paused_ || !asr_stream_) return result;
 
+        // RMS-based voice/silence detection
+        double sum_sq = 0.0;
+        for (int i = 0; i < n; ++i) {
+            sum_sq += static_cast<double>(samples[i]) * static_cast<double>(samples[i]);
+        }
+        const float rms = static_cast<float>(std::sqrt(sum_sq / static_cast<double>(n)));
+
+        if (rms < kSilenceRmsThreshold) {
+            if (has_voice_) {
+                ++silence_chunks_;
+            }
+        } else {
+            if (!has_voice_) {
+                RCLCPP_INFO(logger_, "ASR voice onset rms=%.4f", rms);
+            }
+            has_voice_ = true;
+            silence_chunks_ = 0;
+        }
+
+        // Always feed audio to sherpa-onnx for streaming processing
         SherpaOnnxOnlineStreamAcceptWaveform(asr_stream_, sample_rate_, samples, n);
+
+        // Decode available frames
+        int ready_count = 0;
         while (SherpaOnnxIsOnlineStreamReady(asr_, asr_stream_)) {
             SherpaOnnxDecodeOnlineStream(asr_, asr_stream_);
+            ++ready_count;
         }
-        if (SherpaOnnxOnlineStreamIsEndpoint(asr_, asr_stream_)) {
+
+        // Check for endpoint: voice followed by silence
+        if (has_voice_ && silence_chunks_ >= kSilenceChunksForFinal) {
+            // Finalize utterance
+            SherpaOnnxOnlineStreamInputFinished(asr_stream_);
+            while (SherpaOnnxIsOnlineStreamReady(asr_, asr_stream_)) {
+                SherpaOnnxDecodeOnlineStream(asr_, asr_stream_);
+            }
+
             const SherpaOnnxOnlineRecognizerResult* r = SherpaOnnxGetOnlineStreamResult(asr_, asr_stream_);
             if (r && r->text && r->text[0] != '\0') {
                 result.text = r->text;
                 result.is_final = true;
             }
             if (r) SherpaOnnxDestroyOnlineRecognizerResult(r);
+
+            RCLCPP_INFO(logger_, "ASR endpoint: text='%s' voice_chunks=%d silence_chunks=%d",
+                        result.text.c_str(), voice_chunk_count_, silence_chunks_);
+
             SherpaOnnxOnlineStreamReset(asr_, asr_stream_);
+            has_voice_ = false;
+            silence_chunks_ = 0;
+            voice_chunk_count_ = 0;
+        } else if (has_voice_) {
+            ++voice_chunk_count_;
         }
+
         return result;
     }
 
     void reset() override {
         if (asr_ && asr_stream_) {
             SherpaOnnxOnlineStreamReset(asr_, asr_stream_);
+            has_voice_ = false;
+            silence_chunks_ = 0;
+            voice_chunk_count_ = 0;
         }
     }
 
-    void pause(bool paused) override { paused_ = paused; }
+    void pause(bool paused) override {
+        paused_ = paused;
+        if (paused) {
+            has_voice_ = false;
+            silence_chunks_ = 0;
+            voice_chunk_count_ = 0;
+        }
+    }
 
 private:
     void cleanup() {
@@ -88,11 +138,19 @@ private:
         }
     }
 
+    static constexpr float kSilenceRmsThreshold = 0.002f;
+    static constexpr int kSilenceChunksForFinal = 9;  // 9 × 100ms = 900ms
+
     rclcpp::Logger logger_{rclcpp::get_logger("local_asr")};
     int sample_rate_ = 16000;
     std::atomic<bool> paused_{false};
     SherpaOnnxOnlineRecognizer* asr_ = nullptr;
     SherpaOnnxOnlineStream* asr_stream_ = nullptr;
+
+    // Custom VAD state
+    bool has_voice_ = false;
+    int silence_chunks_ = 0;
+    int voice_chunk_count_ = 0;
 };
 
 std::unique_ptr<AsrBackend> create_sherpa_asr_backend() {

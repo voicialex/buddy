@@ -9,6 +9,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/empty.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <string>
@@ -38,11 +39,17 @@ public:
     enum class State { IDLE, LISTENING, EMOTION_TRIGGER, REQUESTING, SPEAKING };
     State state() const { return state_; }
 
+    // Test hooks for VAD barge-in
+    void test_set_state(State s) { state_ = s; }
+    void test_inject_voice_activity(bool has_voice);
+    int test_vad_voice_frame_count() const { return vad_voice_frame_count_; }
+
 private:
     void on_wake_word(const std_msgs::msg::String& msg);
     void on_asr_text(const std_msgs::msg::String& msg);
     void on_emotion(const buddy_interfaces::msg::EmotionResult& msg);
     void on_tts_done(const std_msgs::msg::Empty& msg);
+    void on_voice_activity(const std_msgs::msg::Bool& msg);
 
     void on_llm_feedback(GoalHandleInference::SharedPtr goal_handle,
                          const std::shared_ptr<const Inference::Feedback> feedback);
@@ -55,7 +62,7 @@ private:
     void flush_sentence_buffer();
     void reset_session_timer();
     void reset_speaking_watchdog();
-    void cancel_current_turn();
+    void cancel_current_turn(const char* reason = "barge-in");
     void log_turn_metrics(const char* reason);
 
     // State machine
@@ -80,6 +87,11 @@ private:
     std::vector<std::string> wake_phrase_fallbacks_;
     std::string fallback_sentence_;
 
+    // VAD barge-in debounce
+    int vad_voice_frame_count_{0};
+    int vad_interrupt_threshold_{5};
+    bool vad_interrupt_enabled_{false};
+
     // Emotion state
     std::string current_emotion_;
     float emotion_confidence_{0.f};
@@ -102,6 +114,7 @@ private:
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr asr_text_sub_;
     rclcpp::Subscription<buddy_interfaces::msg::EmotionResult>::SharedPtr emotion_sub_;
     rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr tts_done_sub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr voice_activity_sub_;
 
     rclcpp::CallbackGroup::SharedPtr capture_client_group_;
 };

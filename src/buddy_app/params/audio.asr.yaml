@@ -2,7 +2,7 @@ audio:
   ros__parameters:
     asr_cooldown_ms: 300
     kws:
-      enable: true
+      enable: false
       model_dir: "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile"
       model:
         encoder: "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
