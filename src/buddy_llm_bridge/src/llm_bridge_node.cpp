@@ -126,10 +126,6 @@ static std::string json_escape(const std::string& s) {
     return out;
 }
 
-static bool is_valid_llm_mode(const std::string& mode) {
-    return mode == "local_only" || mode == "cloud_only" || mode == "local_route";
-}
-
 LlmBridgeNode::LlmBridgeNode(const rclcpp::NodeOptions& options)
     : InferenceServerBase("llm_bridge", "/inference/llm", options) {}
 
@@ -137,18 +133,10 @@ CallbackReturn LlmBridgeNode::on_configure(const rclcpp_lifecycle::State&) {
     RCLCPP_INFO(get_logger(), "LlmBridgeNode: configuring");
 
     declare_parameter("server_url", "http://127.0.0.1:8002");
-    declare_parameter("mode", "local_route");
     declare_parameter("request_timeout_sec", 120);
 
     server_url_ = get_parameter("server_url").as_string();
     while (!server_url_.empty() && server_url_.back() == '/') server_url_.pop_back();
-    mode_ = get_parameter("mode").as_string();
-    if (!is_valid_llm_mode(mode_)) {
-        RCLCPP_ERROR(get_logger(),
-                     "Invalid llm_bridge.mode='%s'. Allowed: local_only | cloud_only | local_route",
-                     mode_.c_str());
-        return CallbackReturn::ERROR;
-    }
     request_timeout_sec_ = get_parameter("request_timeout_sec").as_int();
     if (request_timeout_sec_ < 10) {
         RCLCPP_WARN(get_logger(), "request_timeout_sec=%d too small, clamping to 10", request_timeout_sec_);
@@ -163,7 +151,7 @@ CallbackReturn LlmBridgeNode::on_configure(const rclcpp_lifecycle::State&) {
 
 void LlmBridgeNode::execute(std::shared_ptr<GoalHandle> goal_handle) {
     const auto goal = goal_handle->get_goal();
-    RCLCPP_INFO(get_logger(), "LLM request [%s]: %s", mode_.c_str(), goal->user_text.c_str());
+    RCLCPP_INFO(get_logger(), "LLM request: %s", goal->user_text.c_str());
 
     // Build JSON body
     std::ostringstream body;
@@ -182,8 +170,8 @@ void LlmBridgeNode::execute(std::shared_ptr<GoalHandle> goal_handle) {
     }
     std::string user_text = goal->user_text;
     if (user_text.empty()) user_text = "你好";
-    body << R"({"role":"user","content":")" << json_escape(user_text) << R"("}],"mode":")"
-         << mode_ << R"(","session_id":")" << json_escape(goal->session_id)
+    body << R"({"role":"user","content":")" << json_escape(user_text) << R"("}],"session_id":")"
+         << json_escape(goal->session_id)
          << R"(","stream":true)";
 
     // Forward emotion text

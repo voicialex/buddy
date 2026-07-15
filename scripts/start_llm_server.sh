@@ -461,7 +461,6 @@ case "${1:-start}" in
             echo "  Ollama: $OLLAMA_URL  |  LLM API: http://127.0.0.1:$LLM_PORT"
         elif [[ "$local_backend" == "rk_llm" ]]; then
             echo "  RKLLM: $(resolve_rkllm_url)  |  LLM API: http://127.0.0.1:$LLM_PORT"
-            local rkllm_model_path
             rkllm_model_path="$(resolve_rkllm_model_path 2>/dev/null)" || rkllm_model_path=""
             [[ -n "$rkllm_model_path" ]] && echo "  Model: $(basename "$rkllm_model_path")"
         else
@@ -499,7 +498,6 @@ case "${1:-start}" in
             echo "  Ollama: $OLLAMA_URL  |  LLM API: http://127.0.0.1:$LLM_PORT"
         elif [[ "$local_backend" == "rk_llm" ]]; then
             echo "  RKLLM: $(resolve_rkllm_url)  |  LLM API: http://127.0.0.1:$LLM_PORT"
-            local rkllm_model_path
             rkllm_model_path="$(resolve_rkllm_model_path 2>/dev/null)" || rkllm_model_path=""
             [[ -n "$rkllm_model_path" ]] && echo "  Model: $(basename "$rkllm_model_path")"
         else

@@ -2,7 +2,7 @@ server:
   host: "127.0.0.1"
   port: 8002
 
-mode: "local_route"
+mode: "local_only"
 
 rules: |
   用简洁自然的中文回答，不超过五句话。

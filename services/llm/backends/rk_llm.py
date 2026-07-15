@@ -7,10 +7,16 @@ import time
 from typing import AsyncIterator
 
 import httpx
+from httpx import HTTPStatusError
 
 from .base import LLMBackend
 
 logger = logging.getLogger("rk_llm")
+
+# RKLLM flask server is single-request (is_blocking flag). When a previous
+# request is still running, the server returns 503. Retry with backoff.
+_RETRY_MAX = 8
+_RETRY_BASE_DELAY = 0.4
 
 
 class RkLlmBackend(LLMBackend):
@@ -197,6 +203,14 @@ class RkLlmBackend(LLMBackend):
         delta = choices[-1].get("delta") or {}
         return delta.get("content", "") or ""
 
+    async def _retry_delay(self, attempt: int, reason: str = "") -> None:
+        delay = _RETRY_BASE_DELAY * (2 ** attempt)
+        logger.warning(
+            "RKLLM %s, retry %d/%d in %.1fs",
+            reason, attempt + 1, _RETRY_MAX, delay,
+        )
+        await asyncio.sleep(delay)
+
     async def stream_chat(
         self,
         messages: list[dict],
@@ -207,37 +221,59 @@ class RkLlmBackend(LLMBackend):
         try:
             await self._ensure_ready()
             body = self._build_request_body(messages, system_prompt, stream=True)
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                async with client.stream(
-                    "POST",
-                    self._url(),
-                    json=body,
-                    headers=self._headers(),
-                ) as resp:
-                    resp.raise_for_status()
-                    async for line in resp.aiter_lines():
-                        if not line:
-                            continue
-                        data_str = line.strip()
+            last_exc: Exception | None = None
+            for attempt in range(_RETRY_MAX):
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        async with client.stream(
+                            "POST",
+                            self._url(),
+                            json=body,
+                            headers=self._headers(),
+                        ) as resp:
+                            if resp.status_code == 503 and attempt < _RETRY_MAX - 1:
+                                await self._retry_delay(attempt, "busy (503)")
+                                continue
+                            resp.raise_for_status()
+                            last_exc = None
+                            async for line in resp.aiter_lines():
+                                if not line:
+                                    continue
+                                data_str = line.strip()
 
-                        # OpenAI SSE style: "data: {...}" / "data: [DONE]"
-                        if data_str.startswith("data: "):
-                            data_str = data_str[6:].strip()
-                            if data_str == "[DONE]":
-                                break
+                                # OpenAI SSE style: "data: {...}" / "data: [DONE]"
+                                if data_str.startswith("data: "):
+                                    data_str = data_str[6:].strip()
+                                    if data_str == "[DONE]":
+                                        break
 
-                        # rkllm demo returns plain lines; ignore separators safely.
-                        if data_str in ("", "[DONE]"):
-                            continue
+                                # rkllm demo returns plain lines; ignore separators safely.
+                                if data_str in ("", "[DONE]"):
+                                    continue
 
-                        try:
-                            data = json.loads(data_str)
-                        except json.JSONDecodeError:
-                            continue
+                                try:
+                                    data = json.loads(data_str)
+                                except json.JSONDecodeError:
+                                    continue
 
-                        content = self._extract_stream_text(data)
-                        if content:
-                            yield content
+                                content = self._extract_stream_text(data)
+                                if content:
+                                    yield content
+                            return  # success — streaming completed
+                except HTTPStatusError as e:
+                    last_exc = e
+                    if e.response.status_code == 503 and attempt < _RETRY_MAX - 1:
+                        await self._retry_delay(attempt, "busy (503)")
+                        continue
+                    raise
+                except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError) as e:
+                    last_exc = e
+                    if attempt < _RETRY_MAX - 1:
+                        await self._retry_delay(attempt, f"connection error ({e})")
+                        continue
+                    raise
+            if last_exc:
+                raise last_exc
         finally:
             await self._on_request_end()
 
@@ -250,15 +286,35 @@ class RkLlmBackend(LLMBackend):
         try:
             await self._ensure_ready()
             body = self._build_request_body(messages, system_prompt, stream=False)
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(
-                    self._url(),
-                    json=body,
-                    headers=self._headers(),
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                return self._extract_complete_text(data)
+            last_exc: Exception | None = None
+            for attempt in range(_RETRY_MAX):
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        resp = await client.post(
+                            self._url(),
+                            json=body,
+                            headers=self._headers(),
+                        )
+                        if resp.status_code == 503 and attempt < _RETRY_MAX - 1:
+                            await self._retry_delay(attempt, "busy (503)")
+                            continue
+                        resp.raise_for_status()
+                        data = resp.json()
+                        return self._extract_complete_text(data)
+                except HTTPStatusError as e:
+                    last_exc = e
+                    if e.response.status_code == 503 and attempt < _RETRY_MAX - 1:
+                        await self._retry_delay(attempt, "busy (503)")
+                        continue
+                    raise
+                except (httpx.ConnectError, httpx.RemoteProtocolError) as e:
+                    last_exc = e
+                    if attempt < _RETRY_MAX - 1:
+                        await self._retry_delay(attempt, f"connection error ({e})")
+                        continue
+                    raise
+            if last_exc:
+                raise last_exc
         finally:
             await self._on_request_end()
 

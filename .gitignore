@@ -15,6 +15,7 @@ asset/
 venv-tts/
 .venv/
 services/*/.venv/
+.claude/settings.local.json
 graphify-out/
 # third_party/ managed via git submodules
 venv-asr/

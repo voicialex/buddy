@@ -1,6 +1,0 @@
-local_llm:
-  ros__parameters:
-    model_name: "qwen2.5:7b"
-    api_url: "http://localhost:11434"
-    timeout_seconds: 30
-    system_prompt: ""
