@@ -29,7 +29,7 @@ audio:
           stream_analog_level: 127
         aec:
           enable: true
-          suppression_level: 1
+          suppression_level: 2
           # near(mic) 与 far(speaker) 信号的时间延迟。
           # ALSA playback buffer + speaker->mic 物理延迟实测 > 80ms，
           # 80ms 时 AEC 找不到回声对应关系，残留 post_rms 0.002-0.01 触发 VAD 误报。
