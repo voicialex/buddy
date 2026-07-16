@@ -18,7 +18,7 @@ MODEL_MANIFEST=(
   "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20|core|cpu gpu|all"
   "zipformer-rknn|core|npu|aarch64"
   "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile|core|all|all"
-  "vits-melo-tts-zh_en|core|cpu gpu|all"
+  "vits-melo-tts-zh_en|core|all|all"
   "melo-tts-rknn|core|npu|aarch64"
   "face_emotion|core|all|all"
   "rkllm|core|npu|aarch64"

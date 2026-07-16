@@ -148,7 +148,7 @@ void AudioPipelineNode::capture_loop() {
 
             // Periodic diag: raw/post RMS + voice + pass (every 10 chunks / 1s)
             if (++diag_chunks % 10 == 0) {
-                RCLCPP_INFO(get_logger(),
+                RCLCPP_DEBUG(get_logger(),
                     "DIAG: raw_rms=%.5f post_rms=%.5f voice=%d pass=%d cooldown=%d wguard=%d",
                     raw_rms, post_rms,
                     preprocess.has_voice ? 1 : 0,

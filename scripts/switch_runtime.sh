@@ -155,7 +155,7 @@ esac
 
 # Default: all three modules
 modules=("$@")
-[[ ${#modules[@]} -eq 0 ]] && modules=(asr tts vision)
+[[ ${#modules[@]} -eq 0 ]] && modules=(asr vision)
 
 # Validate module names
 for m in "${modules[@]}"; do

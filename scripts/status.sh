@@ -84,8 +84,8 @@ if [[ -f "$AUDIO_TTS_YAML" ]]; then
     tts_runtime_cfg="$(grep -A4 "^    tts:" "$AUDIO_TTS_YAML" | grep "runtime:" | head -1 | awk '{print $2}' | tr -d '"' || echo "unknown")"
 fi
 
-if [[ -f "$LLM_BRIDGE_YAML" ]]; then
-    inference_mode="$(grep -E "^[[:space:]]*mode:" "$LLM_BRIDGE_YAML" | head -1 | awk '{print $2}' | tr -d '"' || echo "unknown")"
+if [[ -f "$LLM_CONFIG" ]]; then
+    inference_mode="$(grep -E "^mode:" "$LLM_CONFIG" | head -1 | awk '{print $2}' | tr -d '"' || echo "unknown")"
 fi
 
 if [[ -f "$MODULES_YAML" ]]; then

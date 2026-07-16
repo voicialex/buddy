@@ -97,15 +97,41 @@ build_llm_pkg() {
       ;;
   esac
 
-  # Download all dependencies as wheels for target arch (incl. transitive deps)
   PIP_INDEX="https://mirrors.aliyun.com/pypi/simple/"
-  pip download --quiet \
-    -i "$PIP_INDEX" --trusted-host mirrors.aliyun.com \
-    "${plat_flags[@]}" \
-    --python-version "$PYTHON_VER" \
-    --only-binary=:all: \
-    -r "$req_file" \
-    -d "$wheels_dir/" || echo "[WARN] Some wheels download failed"
+
+  # Cache wheels to avoid re-downloading every build
+  local cache_dir="$ROOT_DIR/.cache/pip-wheels/llm-${ARCH}-py${PYTHON_VER}"
+  local cache_hash_file="$cache_dir/.requirements.sha256"
+  local req_hash
+  req_hash="$(sha256sum "$req_file" | awk '{print $1}')"
+  local cache_valid=false
+  if [[ -f "$cache_hash_file" ]]; then
+    local cached_hash
+    cached_hash="$(cat "$cache_hash_file")"
+    if [[ "$cached_hash" == "$req_hash" ]] && ls "$cache_dir"/*.whl >/dev/null 2>&1; then
+      cache_valid=true
+    fi
+  fi
+
+  if $cache_valid; then
+    echo "[INFO] Reusing cached pip wheels ($(ls "$cache_dir"/*.whl 2>/dev/null | wc -l) files)"
+    cp "$cache_dir"/*.whl "$wheels_dir/"
+  else
+    echo "[INFO] Downloading pip wheels..."
+    # Download all dependencies as wheels for target arch (incl. transitive deps)
+    pip download --quiet \
+      -i "$PIP_INDEX" --trusted-host mirrors.aliyun.com \
+      "${plat_flags[@]}" \
+      --python-version "$PYTHON_VER" \
+      --only-binary=:all: \
+      -r "$req_file" \
+      -d "$wheels_dir/" || echo "[WARN] Some wheels download failed"
+    # Update cache
+    mkdir -p "$cache_dir"
+    rm -f "$cache_dir"/*.whl
+    cp "$wheels_dir"/*.whl "$cache_dir/" 2>/dev/null || true
+    echo "$req_hash" > "$cache_hash_file"
+  fi
 
   # Create minimal venv
   printf '[virtualenv]\nhome = /usr/bin\ninclude-system-site-packages = true\nversion = %s\n' "$PYTHON_VER" \
@@ -172,13 +198,38 @@ ACTIVATE_EOF
   fi
   # Pre-build rkllm_server venv (flask only, pure Python)
   if [[ -f "$tmp/opt/buddy/rkllm_server/requirements.txt" ]]; then
+    local rkllm_req="$tmp/opt/buddy/rkllm_server/requirements.txt"
     local rkllm_wheels="$tmp/opt/buddy/rkllm_server/wheels"
     local rkllm_venv="$tmp/opt/buddy/rkllm_server/.venv"
     local rkllm_site="$rkllm_venv/lib/python${PYTHON_VER}/site-packages"
     mkdir -p "$rkllm_wheels" "$rkllm_venv/bin" "$rkllm_site"
-    pip download --quiet -i "$PIP_INDEX" --trusted-host mirrors.aliyun.com \
-      "${plat_flags[@]}" --python-version "$PYTHON_VER" --only-binary=:all: \
-      -r "$tmp/opt/buddy/rkllm_server/requirements.txt" -d "$rkllm_wheels/" || echo "[WARN] rkllm flask wheels download failed"
+
+    local rkllm_cache_dir="$ROOT_DIR/.cache/pip-wheels/rkllm-${ARCH}-py${PYTHON_VER}"
+    local rkllm_cache_hash_file="$rkllm_cache_dir/.requirements.sha256"
+    local rkllm_req_hash
+    rkllm_req_hash="$(sha256sum "$rkllm_req" | awk '{print $1}')"
+    local rkllm_cache_valid=false
+    if [[ -f "$rkllm_cache_hash_file" ]]; then
+      local rkllm_cached_hash
+      rkllm_cached_hash="$(cat "$rkllm_cache_hash_file")"
+      if [[ "$rkllm_cached_hash" == "$rkllm_req_hash" ]] && ls "$rkllm_cache_dir"/*.whl >/dev/null 2>&1; then
+        rkllm_cache_valid=true
+      fi
+    fi
+
+    if $rkllm_cache_valid; then
+      echo "[INFO] Reusing cached rkllm pip wheels ($(ls "$rkllm_cache_dir"/*.whl 2>/dev/null | wc -l) files)"
+      cp "$rkllm_cache_dir"/*.whl "$rkllm_wheels/"
+    else
+      echo "[INFO] Downloading rkllm pip wheels..."
+      pip download --quiet -i "$PIP_INDEX" --trusted-host mirrors.aliyun.com \
+        "${plat_flags[@]}" --python-version "$PYTHON_VER" --only-binary=:all: \
+        -r "$rkllm_req" -d "$rkllm_wheels/" || echo "[WARN] rkllm flask wheels download failed"
+      mkdir -p "$rkllm_cache_dir"
+      rm -f "$rkllm_cache_dir"/*.whl
+      cp "$rkllm_wheels"/*.whl "$rkllm_cache_dir/" 2>/dev/null || true
+      echo "$rkllm_req_hash" > "$rkllm_cache_hash_file"
+    fi
     printf '[virtualenv]\nhome = /usr/bin\ninclude-system-site-packages = true\nversion = %s\n' "$PYTHON_VER" \
       > "$rkllm_venv/pyvenv.cfg"
     ln -sf /usr/bin/python3 "$rkllm_venv/bin/python3"

@@ -25,7 +25,7 @@ public:
 
         SherpaOnnxOfflineTtsConfig cfg{};
         std::memset(&cfg, 0, sizeof(cfg));
-        cfg.model.num_threads = 1;
+        cfg.model.num_threads = 4;
         cfg.model.provider = "cpu";
 
         if (model_type_ == "kokoro") {

@@ -23,3 +23,4 @@ services/llm/data/memory/sessions/
 refs/
 
 rkllm-backup-models/
+.cache/
