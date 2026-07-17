@@ -6,53 +6,40 @@ DOCKER_DIR="$ROOT_DIR/docker"
 
 usage() {
   cat <<'EOF'
-Usage: ./build.sh [-t|--arch x86|arm64] [-d|--device cpu|gpu|npu] [--ros-distro humble|jazzy] [-j N] [-c] [-p] [-v VERSION] [colcon args...]
+Usage: ./build.sh [-t x86|arm64] [-d cpu|gpu|npu] [--ros-distro jazzy|humble] [-c] [-j N] [-p] [-v VER] [--all] [colcon args...]
 
 Options:
-  -t, --arch TARGET   x86 (default) or arm64
+  -t, --arch TARGET   auto (default, matches host arch)
   -d, --device DEV    cpu (default), gpu (CUDA), or npu (RKNN)
-  --ros-distro DIST   humble (default) or jazzy — ROS 2 distro + base image
-  --all               Parallel build all 4 combos (arm64/x86 × humble/jazzy)
-  -j N        Parallel workers (default: \$(nproc), or BUDDY_PARALLEL_WORKERS env)
+  --ros-distro DIST   auto (default, matches host: 22.04→humble, 24.04→jazzy)
   -c          Clean build
-  --rebuild-base      Force rebuild buddy-base image (apt + pip deps)
-  -p, --package       x86 only: package .deb after build (default: skip)
+  --native    Force native build (skip Docker fallback)
+  -j N        Parallel workers (default: $(nproc))
+  -p, --package       Package .deb after native build
   -v VER      Deb version (default: 1.0.0)
+  --all               Parallel build all 4 combos (arm64/x86 × humble/jazzy)
+  --rebuild-base      Force rebuild Docker base image
+
+Build runs natively when host arch == target arch. ROS distro auto-detected from
+host OS (22.04→humble, 24.04→jazzy). Mismatched distro falls back to Docker.
+Use --native to force native build and skip the Docker fallback.
 
 Outputs:
-  x86 build:
-    output/<distro>/x86_64/install/                       # colcon install
-    output/<distro>/x86_64/deb/buddy-robot_<ver>_amd64_<device>.deb (with -p)
-  arm64 build:
-    output/<distro>/aarch64/deb/buddy-robot_<ver>_arm64_<device>.deb
-    output/<distro>/aarch64/deb/buddy-models_<ver>_<device>.tar.gz
-    (arm64 always exports runtime deb; models tar builds only when missing)
+  Native:  output/<distro>/<arch>/install/
+  Docker:  output/<distro>/<arch>/deb/buddy-robot_<ver>_<deb_arch>_<device>.deb
 
 Examples:
-  ./build.sh                        # x86 + cpu + humble incremental (native)
-  ./build.sh --ros-distro jazzy     # x86 + cpu + jazzy (Docker, needs 24.04 toolchain)
-  ./build.sh -d gpu                 # x86 + GPU (CUDA ORT)
-  ./build.sh -t arm64 -d npu       # arm64 + NPU (RKNN) + humble
-  ./build.sh -t arm64 --ros-distro jazzy  # arm64 + jazzy
-  ./build.sh -t arm64               # arm64 incremental (~30s if only src changed)
-  ./build.sh -t arm64 -c            # arm64 force rebuild (~3min, ccache still helps)
-  ./build.sh -t arm64 -v 2.0.0     # arm64 custom version
-  ./build.sh --packages-select X    # x86 humble single package (native only)
-  ./build.sh --all                 # 4-way parallel: arm64/x86 × humble/jazzy
+  ./build.sh                    # auto arch + auto distro → native
+  ./build.sh jazzy              # force jazzy (Docker if host < 24.04)
+  ./build.sh -t arm64           # native on arm64 board, Docker on x86 PC
+  ./build.sh -t arm64 -d npu    # arm64 + NPU (RK3588)
+  ./build.sh -t arm64 -c        # arm64 clean build
+  ./build.sh -d gpu             # x86 + CUDA
+  ./build.sh -p                 # native build + package .deb
+  ./build.sh --all              # all 4 arch × distro combos in parallel
 
-Optional service packages (LLM, ASR, TTS) — built automatically with arm64:
-  output/<distro>/aarch64/services/buddy-service-llm_<ver>_aarch64.tar.gz
-  output/<distro>/aarch64/services/buddy-service-funasr_<ver>_aarch64.tar.gz
-  output/<distro>/aarch64/services/buddy-service-chattts_<ver>_aarch64.tar.gz
-
-One-command board deploy/run (incremental runtime/models/services):
-  ./scripts/deploy_run_arm64_npu.sh --ros-distro ${ROS2_DISTRO:-humble}
-
-Env: BUDDY_PARALLEL_WORKERS=N (overridden by -j)
-
-arm64 cache cleanup:
-  docker builder prune --filter type=exec.cachemount   # ccache only
-  docker builder prune -a -f                           # everything
+Deploy:
+  ./scripts/deploy_run_arm64_npu.sh --ros-distro jazzy
 EOF
   exit 0
 }
@@ -225,16 +212,31 @@ build_docker() {
 }
 
 # ============================================================
-# x86 build (native humble, docker jazzy)
+# Native build — auto-detects arch, routes to Docker only when host OS is too old
 # ============================================================
-build_x86() {
-  # Jazzy requires Ubuntu 24.04 (GCC 13+, GLIBC 2.38). Host 22.04 cannot
-  # natively link jazzy prebuilt libs (missing GLIBCXX_3.4.32 / GLIBC_2.38).
-  # Route jazzy x86 builds through Docker (jazzy-base = ubuntu:24.04).
-  if [[ "$ROS2_DISTRO" == "jazzy" ]]; then
-    echo "[INFO] Jazzy x86 requires Ubuntu 24.04 toolchain — routing through Docker."
-    build_docker x86_64 x86_64 amd64
-    return $?
+build_native() {
+  # Jazzy needs GLIBC 2.38 (Ubuntu 24.04+). If the host is too old, fall back
+  # to Docker instead of failing at link time. --native skips this check.
+  if [[ "$ROS2_DISTRO" == "jazzy" && "$FORCE_NATIVE" != true ]]; then
+    local need_docker=true
+    # Method 1: ldd --version (works everywhere)
+    if ldd --version 2>&1 | grep -oP 'GLIBC \K[0-9]+\.[0-9]+' | head -1 \
+      | { read ver; [[ -n "$ver" ]] && printf '%s\n' 2.38 "$ver" | sort -VC 2>/dev/null; }; then
+      need_docker=false
+    # Method 2: OS version fallback (minimal systems, empty ldconfig cache)
+    elif grep -q 'VERSION_ID="2[4-9]\.' /etc/os-release 2>/dev/null; then
+      need_docker=false
+    fi
+    if $need_docker; then
+      local docker_arch prebuilt_arch deb_arch
+      case "$(uname -m)" in
+        aarch64|arm64) docker_arch="arm64"; prebuilt_arch="aarch64"; deb_arch="arm64" ;;
+        *)             docker_arch="x86_64"; prebuilt_arch="x86_64"; deb_arch="amd64" ;;
+      esac
+      echo "[INFO] Host too old for Jazzy — routing through Docker (use --native to force)."
+      build_docker "$docker_arch" "$prebuilt_arch" "$deb_arch"
+      return $?
+    fi
   fi
 
   local arch
@@ -288,7 +290,10 @@ build_x86() {
     rm -rf "$output_dir"
   fi
 
-  # Source ROS 2
+  # Isolate from any system ROS installation
+  unset AMENT_PREFIX_PATH CMAKE_PREFIX_PATH ROS_DISTRO COLCON_PREFIX_PATH 2>/dev/null || true
+
+  # Source ROS 2 from prebuilt
   set +u
   # shellcheck disable=SC1090
   source "$ros2_setup"
@@ -327,6 +332,13 @@ build_x86() {
   # (e.g. FunASR build pollutes yaml-cpp registry)
   rm -rf ~/.cmake/packages/yaml-cpp 2>/dev/null || true
 
+  # Auto-clear stale cmake cache that references system ROS (e.g. /opt/ros/)
+  if grep -rq "/opt/ros/" "$output_dir/build" 2>/dev/null; then
+    echo "[WARN] Stale cmake cache from system ROS detected, cleaning build dir."
+    echo "[HINT] System ROS env leaked into previous build. Use --native to isolate."
+    rm -rf "$output_dir/build"
+  fi
+
   cd "$ROOT_DIR"
   colcon --log-base "$output_dir/log" \
     build --symlink-install \
@@ -344,8 +356,8 @@ build_x86() {
     "$ROOT_DIR/scripts/package_x86.sh" -v "${VERSION:-1.0.0}" -d "$DEVICE" --ros-distro "$ROS2_DISTRO" --python-ver "$py_ver"
     echo ""
     echo "[INFO] Building service packages..."
-    "$ROOT_DIR/scripts/package_services.sh" --arch x86_64 --version "${VERSION:-1.0.0}" --python-ver "$py_ver" --ros-distro "$ROS2_DISTRO"
-    local svc_dir="$ROOT_DIR/output/${ROS2_DISTRO}/x86_64/services"
+    "$ROOT_DIR/scripts/package_services.sh" --arch "$arch" --version "${VERSION:-1.0.0}" --python-ver "$py_ver" --ros-distro "$ROS2_DISTRO"
+    local svc_dir="$ROOT_DIR/output/${ROS2_DISTRO}/${arch}/services"
     for svc in "$svc_dir"/*.tar.gz; do
       [[ -f "$svc" ]] && echo "[OK] $(basename "$svc") ($(du -sh "$svc" | cut -f1))"
     done
@@ -437,7 +449,7 @@ build_all() {
       if [[ "$target" == "arm64" ]]; then
         build_docker arm64 aarch64 arm64 > "$log" 2>&1
       else
-        build_x86 > "$log" 2>&1
+        build_native > "$log" 2>&1
       fi
     ) &
     pids+=($!)
@@ -567,10 +579,21 @@ build_all() {
 # ============================================================
 # Parse args
 # ============================================================
-TARGET="x86"
+detect_ros_distro() {
+  local ver
+  ver=$(grep -oP 'VERSION_ID="\K[0-9]+\.[0-9]+' /etc/os-release 2>/dev/null || echo "")
+  case "$ver" in
+    24.*) echo "jazzy" ;;
+    22.*) echo "humble" ;;
+    *)    echo "humble" ;;   # safe default
+  esac
+}
+
+TARGET="${BUDDY_TARGET:-}"
 DEVICE="cpu"
-ROS2_DISTRO="jazzy"
+ROS2_DISTRO="${BUDDY_ROS2_DISTRO:-}"
 CLEAN=false
+FORCE_NATIVE=false
 PACKAGE=false
 BUILD_ALL=false
 REBUILD_BASE=false
@@ -584,6 +607,7 @@ while [[ $# -gt 0 ]]; do
     --ros-distro) ROS2_DISTRO="$2"; shift 2 ;;
     --all) BUILD_ALL=true; shift ;;
     -c) CLEAN=true; shift ;;
+    --native) FORCE_NATIVE=true; shift ;;
     --rebuild-base) REBUILD_BASE=true; shift ;;
     -p|--package) PACKAGE=true; shift ;;
     -v) VERSION="$2"; shift 2 ;;
@@ -595,6 +619,21 @@ while [[ $# -gt 0 ]]; do
     *) break ;;
   esac
 done
+
+# Auto-detect target arch from host if not explicitly set
+if [[ -z "$TARGET" ]]; then
+  case "$(uname -m)" in
+    aarch64|arm64) TARGET="arm64" ;;
+    *)             TARGET="x86" ;;
+  esac
+  echo "[INFO] Auto-detected target arch: $TARGET (from host)"
+fi
+
+# Auto-detect ROS distro from host OS if not explicitly set
+if [[ -z "$ROS2_DISTRO" ]]; then
+  ROS2_DISTRO=$(detect_ros_distro)
+  echo "[INFO] Auto-detected ROS distro: $ROS2_DISTRO (from host OS)"
+fi
 
 case "$ROS2_DISTRO" in
   humble|jazzy) ;;
@@ -608,14 +647,22 @@ fi
 
 case "$TARGET" in
   x86|x86_64)
-    build_x86 "$@"
+    if [[ "$(uname -m)" == "x86_64" ]]; then
+      build_native "$@"
+    else
+      build_docker x86_64 x86_64 amd64
+    fi
     ;;
   arm64|aarch64)
     if [[ "$CLEAN" == true ]]; then
       echo "[CLEAN] Removing output/${ROS2_DISTRO}/aarch64/"
       rm -rf "$ROOT_DIR/output/${ROS2_DISTRO}/aarch64"
     fi
-    build_docker arm64 aarch64 arm64
+    if [[ "$(uname -m)" == "aarch64" || "$(uname -m)" == "arm64" ]]; then
+      build_native "$@"
+    else
+      build_docker arm64 aarch64 arm64
+    fi
     ;;
   *)
     die "Unknown target: $TARGET" "Use -t x86 or -t arm64"

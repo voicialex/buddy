@@ -3,7 +3,21 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARCH="$(uname -m)"
-ROS2_DISTRO="${BUDDY_ROS2_DISTRO:-humble}"
+case "$ARCH" in
+  aarch64|arm64) ARCH="aarch64" ;;
+  *)             ARCH="x86_64" ;;
+esac
+# Auto-detect ROS distro from host OS (same logic as build.sh)
+if [[ -n "${BUDDY_ROS2_DISTRO:-}" ]]; then
+  ROS2_DISTRO="$BUDDY_ROS2_DISTRO"
+else
+  OS_VER=$(grep -oP 'VERSION_ID="\K[0-9]+\.[0-9]+' /etc/os-release 2>/dev/null || echo "")
+  case "$OS_VER" in
+    24.*) ROS2_DISTRO="jazzy" ;;
+    22.*) ROS2_DISTRO="humble" ;;
+    *)    ROS2_DISTRO="humble" ;;
+  esac
+fi
 INSTALL_DIR="$ROOT_DIR/output/${ROS2_DISTRO}/${ARCH}/install"
 SETUP="$INSTALL_DIR/setup.bash"
 PREBUILT_CURRENT="$ROOT_DIR/prebuilt/current"

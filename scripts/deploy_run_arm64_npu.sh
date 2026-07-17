@@ -201,9 +201,9 @@ DEB_PATH="$ROOT_DIR/output/${ROS2_DISTRO}/aarch64/deb/buddy-robot_${VERSION}_arm
 MODELS_GLOB="$ROOT_DIR/output/${ROS2_DISTRO}/aarch64/deb/buddy-models_*_npu.tar.gz"
 MODELS_PATH="$(ls -t $MODELS_GLOB 2>/dev/null | head -1 || true)"
 MODELS_REMOTE_PATH="~/buddy-models_npu.tar.gz"
-MODELS_REMOTE_SHA_PATH="~/buddy-models_npu.sha256"
+MODELS_REMOTE_SHA_PATH="~/.buddy-models_npu.sha256"
 MODELS_REMOTE_CACHE_DIR="${BOARD_OUTPUT_BASE}/opt/buddy/models"
-DEB_REMOTE_SHA_PATH="~/buddy-runtime.sha256"
+DEB_REMOTE_SHA_PATH="~/.buddy-runtime.sha256"
 
 SVC_DIR="$ROOT_DIR/output/${ROS2_DISTRO}/aarch64/services"
 SVC_LLM_PATH="$(ls -t "$SVC_DIR"/buddy-service-llm_*_aarch64.tar.gz 2>/dev/null | head -1 || true)"
@@ -266,7 +266,7 @@ if [[ "$DO_DEPLOY" == "1" ]]; then
     if [[ "$DO_DEPLOY_SERVICES" == "1" ]]; then
         if [[ -n "$SVC_LLM_PATH" && -f "$SVC_LLM_PATH" ]]; then
             local_sha="$(sha256sum "$SVC_LLM_PATH" | awk '{print $1}')"
-            remote_sha="$("${SSH_BASE[@]}" "cat ${SVC_REMOTE_BASE}/buddy-service-llm.sha256 2>/dev/null || true")"
+            remote_sha="$("${SSH_BASE[@]}" "cat ${SVC_REMOTE_BASE}/.buddy-service-llm.sha256 2>/dev/null || true")"
             if [[ "$local_sha" == "$remote_sha" ]]; then
                 log_step "Service llm unchanged, skip upload"
             else
@@ -277,7 +277,7 @@ if [[ "$DO_DEPLOY" == "1" ]]; then
         fi
         if [[ -n "$SVC_FUNASR_PATH" && -f "$SVC_FUNASR_PATH" ]]; then
             local_sha="$(sha256sum "$SVC_FUNASR_PATH" | awk '{print $1}')"
-            remote_sha="$("${SSH_BASE[@]}" "cat ${SVC_REMOTE_BASE}/buddy-service-funasr.sha256 2>/dev/null || true")"
+            remote_sha="$("${SSH_BASE[@]}" "cat ${SVC_REMOTE_BASE}/.buddy-service-funasr.sha256 2>/dev/null || true")"
             if [[ "$local_sha" == "$remote_sha" ]]; then
                 log_step "Service funasr unchanged, skip upload"
             else
@@ -288,7 +288,7 @@ if [[ "$DO_DEPLOY" == "1" ]]; then
         fi
         if [[ -n "$SVC_CHATTTS_PATH" && -f "$SVC_CHATTTS_PATH" ]]; then
             local_sha="$(sha256sum "$SVC_CHATTTS_PATH" | awk '{print $1}')"
-            remote_sha="$("${SSH_BASE[@]}" "cat ${SVC_REMOTE_BASE}/buddy-service-chattts.sha256 2>/dev/null || true")"
+            remote_sha="$("${SSH_BASE[@]}" "cat ${SVC_REMOTE_BASE}/.buddy-service-chattts.sha256 2>/dev/null || true")"
             if [[ "$local_sha" == "$remote_sha" ]]; then
                 log_step "Service chattts unchanged, skip upload"
             else
@@ -347,7 +347,7 @@ log_stage "Step 2/4: Apply runtime/models/services on board"
     if [ \"\$DEPLOY_SVC_LLM\" = \"1\" ] && [ -f \"\$SVC_REMOTE_BASE/buddy-service-llm.tar.gz\" ]; then \
       rm -rf \"\$SVC_CACHE_BASE/llm\"; mkdir -p \"\$SVC_CACHE_BASE/llm\"; \
       tar xzf \"\$SVC_REMOTE_BASE/buddy-service-llm.tar.gz\" -C \"\$SVC_CACHE_BASE/llm\"; \
-      sha256sum \"\$SVC_REMOTE_BASE/buddy-service-llm.tar.gz\" | awk '{print \$1}' > \"\$SVC_REMOTE_BASE/buddy-service-llm.sha256\"; \
+      sha256sum \"\$SVC_REMOTE_BASE/buddy-service-llm.tar.gz\" | awk '{print \$1}' > \"\$SVC_REMOTE_BASE/.buddy-service-llm.sha256\"; \
       rm -f ${BOARD_OUTPUT_BASE}/opt/buddy/scripts/start_llm_server.sh; \
       rm -rf ${BOARD_OUTPUT_BASE}/opt/buddy/services/llm ${BOARD_OUTPUT_BASE}/opt/buddy/rkllm_server; \
       cp -a \"\$SVC_CACHE_BASE/llm/.\" ${BOARD_OUTPUT_BASE}/opt/buddy/; \
@@ -355,7 +355,7 @@ log_stage "Step 2/4: Apply runtime/models/services on board"
     if [ \"\$DEPLOY_SVC_FUNASR\" = \"1\" ] && [ -f \"\$SVC_REMOTE_BASE/buddy-service-funasr.tar.gz\" ]; then \
       rm -rf \"\$SVC_CACHE_BASE/funasr\"; mkdir -p \"\$SVC_CACHE_BASE/funasr\"; \
       tar xzf \"\$SVC_REMOTE_BASE/buddy-service-funasr.tar.gz\" -C \"\$SVC_CACHE_BASE/funasr\"; \
-      sha256sum \"\$SVC_REMOTE_BASE/buddy-service-funasr.tar.gz\" | awk '{print \$1}' > \"\$SVC_REMOTE_BASE/buddy-service-funasr.sha256\"; \
+      sha256sum \"\$SVC_REMOTE_BASE/buddy-service-funasr.tar.gz\" | awk '{print \$1}' > \"\$SVC_REMOTE_BASE/.buddy-service-funasr.sha256\"; \
       rm -f ${BOARD_OUTPUT_BASE}/opt/buddy/scripts/start_asr_server.sh ${BOARD_OUTPUT_BASE}/opt/buddy/bin/funasr-wss-server ${BOARD_OUTPUT_BASE}/opt/buddy/bin/funasr-wss-server-2pass; \
       rm -rf ${BOARD_OUTPUT_BASE}/opt/buddy/lib/funasr; \
       cp -a \"\$SVC_CACHE_BASE/funasr/.\" ${BOARD_OUTPUT_BASE}/opt/buddy/; \
@@ -363,7 +363,7 @@ log_stage "Step 2/4: Apply runtime/models/services on board"
     if [ \"\$DEPLOY_SVC_CHATTTS\" = \"1\" ] && [ -f \"\$SVC_REMOTE_BASE/buddy-service-chattts.tar.gz\" ]; then \
       rm -rf \"\$SVC_CACHE_BASE/chattts\"; mkdir -p \"\$SVC_CACHE_BASE/chattts\"; \
       tar xzf \"\$SVC_REMOTE_BASE/buddy-service-chattts.tar.gz\" -C \"\$SVC_CACHE_BASE/chattts\"; \
-      sha256sum \"\$SVC_REMOTE_BASE/buddy-service-chattts.tar.gz\" | awk '{print \$1}' > \"\$SVC_REMOTE_BASE/buddy-service-chattts.sha256\"; \
+      sha256sum \"\$SVC_REMOTE_BASE/buddy-service-chattts.tar.gz\" | awk '{print \$1}' > \"\$SVC_REMOTE_BASE/.buddy-service-chattts.sha256\"; \
       rm -f ${BOARD_OUTPUT_BASE}/opt/buddy/scripts/start_tts_server.sh; \
       rm -rf ${BOARD_OUTPUT_BASE}/opt/buddy/services/tts; \
       cp -a \"\$SVC_CACHE_BASE/chattts/.\" ${BOARD_OUTPUT_BASE}/opt/buddy/; \
